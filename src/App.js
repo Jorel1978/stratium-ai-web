@@ -1998,80 +1998,134 @@ const App = () => {
   // AUTENTICACIÓN: MONITOREO DE USUARIO
   // ============================================================
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        if (!user.emailVerified) {
-          await signOut(auth);
-          setErrorAuth('Por favor verifica tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada o spam.');
-          setUsuarioActual(null);
-          setCargandoAuth(false);
-          return;
-        }
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      if (!user.emailVerified) {
+        await signOut(auth);
+        setErrorAuth('Por favor verifica tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada o spam.');
+        setUsuarioActual(null);
+        setCargandoAuth(false);
+        return;
+      }
+      
+      const userDoc = await getDocs(query(collection(db, 'usuarios'), where('uid', '==', user.uid)));
+      
+      if (!userDoc.empty) {
+        const userDocId = userDoc.docs[0].id;
+        const userData = userDoc.docs[0].data();
         
-        const userDoc = await getDocs(query(collection(db, 'usuarios'), where('uid', '==', user.uid)));
-        
-        if (!userDoc.empty) {
-          const userData = userDoc.docs[0].data();
-          
-          if (userData.estado === 'pendiente_verificacion') {
-            await updateDoc(doc(db, 'usuarios', userDoc.docs[0].id), {
-              estado: 'activo',
-              emailVerificado: true,
-              fechaVerificacion: serverTimestamp()
-            });
-            userData.estado = 'activo';
-          }
-          
-          setUsuarioActual({
-            uid: user.uid,
-            email: user.email,
-            escaneosRealizados: userData.escaneosRealizados || 0,
-            mesEscaneos: userData.mesEscaneos || null,
-            creditosOCR: userData.creditosOCR || 0,
-            creditosUsados: userData.creditosUsados || 0,
-            fechaVencimiento: userData.fechaVencimiento,
-            fechaInicio: userData.fechaInicio,
-            plan: userData.plan || 'gratis',
-            whatsappNumber: userData.whatsappNumber || null,
-            ...userData
-          });
-        } else {
-          await addDoc(collection(db, 'usuarios'), {
-            uid: user.uid,
-            email: user.email,
-            nombre: user.email.split('@')[0],
-            plan: 'gratis',
+        if (userData.estado === 'pendiente_verificacion') {
+          await updateDoc(doc(db, 'usuarios', userDocId), {
             estado: 'activo',
             emailVerificado: true,
-            escaneosRealizados: 0,
-            mesEscaneos: null,
-            creditosOCR: 3,
-            creditosUsados: 0,
-            fechaVencimiento: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-            fechaInicio: new Date(),
-            fechaRegistro: serverTimestamp()
+            fechaVerificacion: serverTimestamp()
           });
-          setUsuarioActual({
-            uid: user.uid,
-            email: user.email,
-            plan: 'gratis',
-            estado: 'activo',
-            escaneosRealizados: 0,
-            mesEscaneos: null,
-            creditosOCR: 3,
-            creditosUsados: 0
-          });
+          userData.estado = 'activo';
         }
-        setMostrarLogin(false);
+        
+        // ============================================================
+        // 🚀 MIGRACIÓN AUTOMÁTICA - Usuarios existentes
+        // ============================================================
+        const updates = {};
+        let necesitaUpdate = false;
+        
+        // 1. Agregar fecha de vencimiento si no existe (solo para plan gratis)
+        if (!userData.fechaVencimiento && userData.plan === 'gratis') {
+          const fechaVencimiento = new Date();
+          fechaVencimiento.setDate(fechaVencimiento.getDate() + 15);
+          updates.fechaVencimiento = fechaVencimiento;
+          necesitaUpdate = true;
+          console.log('📅 Migrando: fecha de vencimiento agregada');
+        }
+        
+        // 2. Agregar créditos OCR si no existen
+        if (userData.creditosOCR === undefined) {
+          const planCreditos = {
+            gratis: 3,
+            pro: 30,
+            business: 100,
+            elite: 500
+          };
+          updates.creditosOCR = planCreditos[userData.plan] || 3;
+          updates.creditosUsados = userData.creditosUsados || 0;
+          necesitaUpdate = true;
+          console.log('💰 Migrando: créditos OCR agregados');
+        }
+        
+        // 3. Agregar versión de datos
+        if (!userData.dataVersion) {
+          updates.dataVersion = 2;
+          necesitaUpdate = true;
+        }
+        
+        // Aplicar migración si es necesario
+        if (necesitaUpdate) {
+          await updateDoc(doc(db, 'usuarios', userDocId), updates);
+          console.log('✅ Usuario migrado automáticamente a versión 2');
+          // Fusionar los cambios con userData para el estado actual
+          Object.assign(userData, updates);
+        }
+        // ============================================================
+        
+        setUsuarioActual({
+          uid: user.uid,
+          email: user.email,
+          escaneosRealizados: userData.escaneosRealizados || 0,
+          mesEscaneos: userData.mesEscaneos || null,
+          creditosOCR: userData.creditosOCR || 0,
+          creditosUsados: userData.creditosUsados || 0,
+          fechaVencimiento: userData.fechaVencimiento,
+          fechaInicio: userData.fechaInicio,
+          plan: userData.plan || 'gratis',
+          whatsappNumber: userData.whatsappNumber || null,
+          dataVersion: userData.dataVersion || 2,
+          ...userData
+        });
       } else {
-        setUsuarioActual(null);
-        setMostrarLogin(true);
+        // Usuario nuevo: crear con todos los campos correctos
+        const fechaVencimiento = new Date();
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + 15);
+        
+        await addDoc(collection(db, 'usuarios'), {
+          uid: user.uid,
+          email: user.email,
+          nombre: user.email.split('@')[0],
+          plan: 'gratis',
+          estado: 'activo',
+          emailVerificado: true,
+          escaneosRealizados: 0,
+          mesEscaneos: null,
+          creditosOCR: 3,
+          creditosUsados: 0,
+          fechaVencimiento: fechaVencimiento,
+          fechaInicio: new Date(),
+          fechaRegistro: serverTimestamp(),
+          dataVersion: 2
+        });
+        
+        setUsuarioActual({
+          uid: user.uid,
+          email: user.email,
+          plan: 'gratis',
+          estado: 'activo',
+          escaneosRealizados: 0,
+          mesEscaneos: null,
+          creditosOCR: 3,
+          creditosUsados: 0,
+          fechaVencimiento: fechaVencimiento,
+          dataVersion: 2
+        });
       }
-      setCargandoAuth(false);
-    });
-    
-    return () => unsubscribe();
-  }, []);
+      setMostrarLogin(false);
+    } else {
+      setUsuarioActual(null);
+      setMostrarLogin(true);
+    }
+    setCargandoAuth(false);
+  });
+  
+  return () => unsubscribe();
+}, []);
 
   // ============================================================
   // GEOLOCALIZACIÓN
