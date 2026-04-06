@@ -566,7 +566,8 @@ const PantallaLogin = ({
   showConfirmPassword, setShowConfirmPassword, nombreRegistro, setNombreRegistro,
   planSeleccionado, setPlanSeleccionado, modalidadSeleccionada, setModalidadSeleccionada,
   aceptaTerminos, setAceptaTerminos,
-  handleRegistro, handleLogin, setEsRegistro, setErrorAuth, reenviarVerificacion
+  handleRegistro, handleLogin, setEsRegistro, setErrorAuth, reenviarVerificacion,
+  onChangeIdioma
 }) => {
   return (
     <div className="min-h-screen bg-[#0f172a] flex items-center justify-center p-4">
@@ -579,6 +580,32 @@ const PantallaLogin = ({
           {!moneda.mostrarCOP && (
             <p className="text-xs text-cyan-400 mt-1">💱 Precios mostrados en USD</p>
           )}
+        </div>
+
+        {/* Selector de idioma en pantalla de login */}
+        <div className="flex justify-center mb-6">
+          <div className="bg-slate-800/50 rounded-lg p-1 flex gap-1">
+            <button
+              onClick={() => onChangeIdioma('es')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                idioma === 'es' 
+                  ? 'bg-cyan-500 text-white shadow-lg' 
+                  : 'text-gray-400 hover:text-white hover:bg-slate-700'
+              }`}
+            >
+              🇪🇸 Español
+            </button>
+            <button
+              onClick={() => onChangeIdioma('en')}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                idioma === 'en' 
+                  ? 'bg-cyan-500 text-white shadow-lg' 
+                  : 'text-gray-400 hover:text-white hover:bg-slate-700'
+              }`}
+            >
+              🇺🇸 English
+            </button>
+          </div>
         </div>
         
         {errorAuth && (
@@ -770,7 +797,7 @@ const PantallaLogin = ({
                 </div>
               )}
 
-       {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
+              {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
               <div className="mb-4">
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input
@@ -782,7 +809,11 @@ const PantallaLogin = ({
                   />
                   <span className="text-gray-400 text-xs">
                     {t.aceptarTerminos} 
-                    <a href={idioma === 'es' ? '/terminos' : '/terms'} target="_blank" className="text-cyan-400 hover:underline ml-1">
+                    <a 
+                      href={idioma === 'es' ? '/terminos' : '/terms'} 
+                      target="_blank" 
+                      className="text-cyan-400 hover:underline ml-1"
+                    >
                       {t.terminosLink}
                     </a>
                   </span>
@@ -3157,40 +3188,41 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   }
 
   if (!usuarioActual) {
-    return (
-      <PantallaLogin
-        t={t}
-        idioma={idioma}        // <--- AGREGAR ESTA LÍNEA
-        moneda={moneda}
-        errorAuth={errorAuth}
-        validationMessage={validationMessage}
-        esRegistro={esRegistro}
-        emailLogin={emailLogin}
-        setEmailLogin={setEmailLogin}
-        passwordLogin={passwordLogin}
-        setPasswordLogin={setPasswordLogin}
-        showPassword={showPassword}
-        setShowPassword={setShowPassword}
-        confirmPassword={confirmPassword}
-        setConfirmPassword={setConfirmPassword}
-        showConfirmPassword={showConfirmPassword}
-        setShowConfirmPassword={setShowConfirmPassword}
-        nombreRegistro={nombreRegistro}
-        setNombreRegistro={setNombreRegistro}
-        planSeleccionado={planSeleccionado}
-        setPlanSeleccionado={setPlanSeleccionado}
-        modalidadSeleccionada={modalidadSeleccionada}
-        setModalidadSeleccionada={setModalidadSeleccionada}
-        aceptaTerminos={aceptaTerminos}
-        setAceptaTerminos={setAceptaTerminos}
-        handleRegistro={handleRegistro}
-        handleLogin={handleLogin}
-        setEsRegistro={setEsRegistro}
-        setErrorAuth={setErrorAuth}
-        reenviarVerificacion={reenviarVerificacion}
-      />
-    );
-  }
+  return (
+    <PantallaLogin
+      t={t}
+      idioma={idioma}
+      onChangeIdioma={setIdioma}
+      moneda={moneda}
+      errorAuth={errorAuth}
+      validationMessage={validationMessage}
+      esRegistro={esRegistro}
+      emailLogin={emailLogin}
+      setEmailLogin={setEmailLogin}
+      passwordLogin={passwordLogin}
+      setPasswordLogin={setPasswordLogin}
+      showPassword={showPassword}
+      setShowPassword={setShowPassword}
+      confirmPassword={confirmPassword}
+      setConfirmPassword={setConfirmPassword}
+      showConfirmPassword={showConfirmPassword}
+      setShowConfirmPassword={setShowConfirmPassword}
+      nombreRegistro={nombreRegistro}
+      setNombreRegistro={setNombreRegistro}
+      planSeleccionado={planSeleccionado}
+      setPlanSeleccionado={setPlanSeleccionado}
+      modalidadSeleccionada={modalidadSeleccionada}
+      setModalidadSeleccionada={setModalidadSeleccionada}
+      aceptaTerminos={aceptaTerminos}
+      setAceptaTerminos={setAceptaTerminos}
+      handleRegistro={handleRegistro}
+      handleLogin={handleLogin}
+      setEsRegistro={setEsRegistro}
+      setErrorAuth={setErrorAuth}
+      reenviarVerificacion={reenviarVerificacion}
+    />
+  );
+}
 
   // Dashboard principal
   return (
@@ -3934,5 +3966,6 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
 };
 
 export default App;
+
 
 
