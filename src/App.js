@@ -770,7 +770,7 @@ const PantallaLogin = ({
                 </div>
               )}
 
-              {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
+       {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
               <div className="mb-4">
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input
@@ -782,7 +782,7 @@ const PantallaLogin = ({
                   />
                   <span className="text-gray-400 text-xs">
                     {t.aceptarTerminos} 
-                    <a href="/terminos" target="_blank" className="text-cyan-400 hover:underline ml-1">
+                    <a href={idioma === 'es' ? '/terminos' : '/terms'} target="_blank" className="text-cyan-400 hover:underline ml-1">
                       {t.terminosLink}
                     </a>
                   </span>
@@ -3160,6 +3160,7 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
     return (
       <PantallaLogin
         t={t}
+        idioma={idioma}        // <--- AGREGAR ESTA LÍNEA
         moneda={moneda}
         errorAuth={errorAuth}
         validationMessage={validationMessage}
@@ -3933,4 +3934,5 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
 };
 
 export default App;
+
 
