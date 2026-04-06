@@ -23,6 +23,7 @@ import 'jspdf-autotable';
 import emailjs from '@emailjs/browser';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { handleEscaneoDocumentos, registrarCompraEnRegistros, actualizarInventarioAcumulado } from './util/ocrEngine';
+import CheckoutMercadoPago from './components/CheckoutMercadoPago';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAgEy1bbqfV4ugPbEdF8pccihUogwfIVDE",
@@ -958,6 +959,53 @@ const App = () => {
   // ============================================================
   const [imagenFactura, setImagenFactura] = useState(null);
   const [procesandoOCR, setProcesandoOCR] = useState(false);
+
+  // ============================================================
+  // NUEVOS ESTADOS PARA MERCADO PAGO
+  // ============================================================
+  const [mostrarCheckout, setMostrarCheckout] = useState(false);
+  const [planSeleccionadoPago, setPlanSeleccionadoPago] = useState(null);
+
+// ============================================================
+// VERIFICAR PAGO PENDIENTE DE MERCADO PAGO
+// ============================================================
+useEffect(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const paymentId = urlParams.get('payment_id');
+  const status = urlParams.get('status');
+  const plan = localStorage.getItem('pendingPlan');
+  const userId = localStorage.getItem('pendingUserId');
+  
+  if (status === 'approved' && paymentId && userId && usuarioActual?.uid === userId) {
+    fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: { 
+        'Authorization': 'Bearer TEST-2082807274972579-040613-aed5f6a1cced0244b4bed0b0fac0bd9c-3087415746'
+      }
+    })
+    .then(res => res.json())
+    .then(payment => {
+      if (payment.status === 'approved') {
+        const planCreditos = { pro: 30, business: 100, elite: 500 };
+        const fechaVencimiento = new Date();
+        fechaVencimiento.setDate(fechaVencimiento.getDate() + 30);
+        
+        updateDoc(doc(db, 'usuarios', userId), {
+          plan: plan,
+          creditosOCR: planCreditos[plan],
+          creditosUsados: 0,
+          fechaVencimiento: fechaVencimiento
+        }).then(() => {
+          localStorage.removeItem('pendingPlan');
+          localStorage.removeItem('pendingUserId');
+          setValidationMessage(`✅ Pago exitoso! Plan ${plan} activado.`);
+          setTimeout(() => setValidationMessage(null), 5000);
+          setTimeout(() => window.location.reload(), 2000);
+        });
+      }
+    })
+    .catch(error => console.error('Error verificando pago:', error));
+  }
+}, [usuarioActual]);
 
   // ============================================================
   // FUNCIONES DE CÁLCULO DE FECHAS
@@ -2769,9 +2817,9 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   };
 
   // ============================================================
-  // MODAL DE UPGRADE (CON PLAN 3 - ELITE)
+  // MODAL DE UPGRADE (CON BOTONES DE PAGO)
   // ============================================================
-  const ModalUpgrade = ({ isOpen, onClose, funcionNombre }) => {
+  const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => {
     if (!isOpen) return null;
     
     return (
@@ -2786,26 +2834,58 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
           </div>
           
           <div className="space-y-3 mb-6">
+            {/* Plan 1 - Pro */}
             <div className="bg-slate-800/50 p-3 rounded-lg">
-              <p className="text-cyan-400 font-bold">{t.plan1} - {moneda.mostrarCOP ? '$59,900/mes' : '$19.99/mes'}</p>
-              <p className="text-gray-400 text-xs">✓ 30 escaneos/mes • ✓ Alertas Push • ✓ Reporte PDF</p>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-cyan-400 font-bold">{t.plan1}</p>
+                <p className="text-white font-bold">{moneda.mostrarCOP ? '$59,900/mes' : '$19.99/mes'}</p>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">✓ 30 escaneos/mes • ✓ Alertas Push • ✓ Reporte PDF</p>
+              <button
+                onClick={() => onSeleccionarPlan('pro')}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+              >
+                Pagar {moneda.mostrarCOP ? '$59,900' : '$19.99'}
+              </button>
             </div>
+
+            {/* Plan 2 - Business */}
             <div className="bg-slate-800/50 p-3 rounded-lg">
-              <p className="text-purple-400 font-bold">{t.plan2} - {moneda.mostrarCOP ? '$99,900/mes' : '$49.99/mes'}</p>
-              <p className="text-gray-400 text-xs">✓ 100 escaneos/mes • ✓ Auditoría completa • ✓ Reporte PDF</p>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-purple-400 font-bold">{t.plan2}</p>
+                <p className="text-white font-bold">{moneda.mostrarCOP ? '$99,900/mes' : '$49.99/mes'}</p>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">✓ 100 escaneos/mes • ✓ Auditoría completa • ✓ Reporte PDF</p>
+              <button
+                onClick={() => onSeleccionarPlan('business')}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+              >
+                Pagar {moneda.mostrarCOP ? '$99,900' : '$49.99'}
+              </button>
             </div>
+
+            {/* Plan 3 - Elite */}
             <div className="bg-slate-800/50 p-3 rounded-lg border border-yellow-500/30">
-              <p className="text-yellow-400 font-bold">{t.plan3} - {moneda.mostrarCOP ? '$199,900/mes' : '$99.90/mes'}</p>
-              <p className="text-gray-400 text-xs">✓ 500 escaneos/mes • ✓ WhatsApp (alertas críticas) • ✓ Soporte prioritario</p>
-              <p className="text-yellow-500/70 text-[10px] mt-1">✨ Ideal para negocios en crecimiento con alta rotación</p>
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-yellow-400 font-bold">{t.plan3}</p>
+                <p className="text-white font-bold">{moneda.mostrarCOP ? '$199,900/mes' : '$99.90/mes'}</p>
+              </div>
+              <p className="text-gray-400 text-xs mb-3">✓ 500 escaneos/mes • ✓ WhatsApp (alertas críticas) • ✓ Soporte prioritario</p>
+              <button
+                onClick={() => onSeleccionarPlan('elite')}
+                className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+              >
+                Pagar {moneda.mostrarCOP ? '$199,900' : '$99.90'}
+              </button>
+              <p className="text-yellow-500/70 text-[10px] mt-2 text-center">✨ Ideal para negocios en crecimiento con alta rotación</p>
             </div>
           </div>
           
           <button
             onClick={onClose}
-            className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300"
+            className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
           >
-            {t.upgradeButton}
+            Cancelar
           </button>
         </div>
       </div>
@@ -3949,10 +4029,17 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
       
       {/* Modales */}
       <ModalUpgrade
-        isOpen={modalUpgradeOpen}
-        onClose={() => setModalUpgradeOpen(false)}
-        funcionNombre={funcionBloqueada}
-      />
+  isOpen={modalUpgradeOpen}
+  onClose={() => setModalUpgradeOpen(false)}
+  funcionNombre={funcionBloqueada}
+  onSeleccionarPlan={(plan) => {
+    setModalUpgradeOpen(false);
+    localStorage.setItem('pendingPlan', plan);
+    localStorage.setItem('pendingUserId', usuarioActual?.uid);
+    setPlanSeleccionadoPago(plan);
+    setMostrarCheckout(true);
+  }}
+/>
       
       <ModalFechaVencimiento
         isOpen={mostrarModalVencimiento}
@@ -3961,11 +4048,35 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
         onSaltar={handleSaltarVencimiento}
         producto={productoPendiente}
       />
+
+      {/* Modal de pago con Mercado Pago */}
+      {mostrarCheckout && (
+        <CheckoutMercadoPago
+          plan={planSeleccionadoPago}
+          userEmail={usuarioActual?.email}
+          userId={usuarioActual?.uid}
+          moneda={moneda}
+          onSuccess={() => {
+            setMostrarCheckout(false);
+            setValidationMessage('✅ Pago exitoso. Tu plan ha sido actualizado.');
+            setTimeout(() => setValidationMessage(null), 5000);
+            setTimeout(() => window.location.reload(), 2000);
+          }}
+          onError={(error) => {
+            setMostrarCheckout(false);
+            setError('Error en el pago: ' + error);
+            setTimeout(() => setError(null), 5000);
+          }}
+          onClose={() => setMostrarCheckout(false)}
+        />
+      )}
     </div>
   );
 };
 
 export default App;
+
+
 
 
 
