@@ -798,27 +798,27 @@ const PantallaLogin = ({
               )}
 
               {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
-              <div className="mb-4">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={aceptaTerminos}
-                    onChange={(e) => setAceptaTerminos(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
-                    required
-                  />
-                  <span className="text-gray-400 text-xs">
-                    {t.aceptarTerminos} 
-                    <a 
-                      href={idioma === 'es' ? '/terminos' : '/terms'} 
-                      target="_blank" 
-                      className="text-cyan-400 hover:underline ml-1"
-                    >
-                      {t.terminosLink}
-                    </a>
-                  </span>
-                </label>
-              </div>
+<div className="mb-4">
+  <label className="flex items-start gap-2 cursor-pointer">
+    <input
+      type="checkbox"
+      checked={aceptaTerminos}
+      onChange={(e) => setAceptaTerminos(e.target.checked)}
+      className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
+      required
+    />
+    <span className="text-gray-400 text-xs">
+      {t.aceptarTerminos} 
+      <a 
+        href={idioma === 'es' ? '/terminos.html' : '/terms.html'} 
+        target="_blank" 
+        className="text-cyan-400 hover:underline ml-1"
+      >
+        {t.terminosLink}
+      </a>
+    </span>
+  </label>
+</div>
             </>
           )}
           
@@ -3966,6 +3966,9 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
 };
 
 export default App;
+
+
+
 
 
 
