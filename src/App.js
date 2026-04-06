@@ -560,7 +560,7 @@ const procesarEscaneoInteligente = async (textoComando, db, inventarioCollection
 // COMPONENTE DE LOGIN/REGISTRO (CON CHECKBOX Y PLAN 3)
 // ============================================================
 const PantallaLogin = ({
-  t, moneda, errorAuth, validationMessage, esRegistro,
+  t, idioma, moneda, errorAuth, validationMessage, esRegistro,
   emailLogin, setEmailLogin, passwordLogin, setPasswordLogin,
   showPassword, setShowPassword, confirmPassword, setConfirmPassword,
   showConfirmPassword, setShowConfirmPassword, nombreRegistro, setNombreRegistro,
