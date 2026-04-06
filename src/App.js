@@ -565,7 +565,7 @@ const PantallaLogin = ({
   emailLogin, setEmailLogin, passwordLogin, setPasswordLogin,
   showPassword, setShowPassword, confirmPassword, setConfirmPassword,
   showConfirmPassword, setShowConfirmPassword, nombreRegistro, setNombreRegistro,
-  planSeleccionado, setPlanSeleccionado, modalidadSeleccionada, setModalidadSeleccionada,
+  planSeleccionado, setPlanSeleccionado,
   aceptaTerminos, setAceptaTerminos,
   handleRegistro, handleLogin, setEsRegistro, setErrorAuth, reenviarVerificacion,
   onChangeIdioma
@@ -752,74 +752,28 @@ const PantallaLogin = ({
                 </div>
               </div>
 
-              {planSeleccionado !== 'gratis' && (
-                <div className="mb-4">
-                  <label className="block text-gray-400 text-sm mb-2">Modalidad de pago</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalidadSeleccionada('mensual')}
-                      className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                        modalidadSeleccionada === 'mensual'
-                          ? 'bg-cyan-600 text-white'
-                          : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      Sin Permanencia
-                      <span className="block text-[10px] opacity-80">
-                        {planSeleccionado === 'pro'
-                          ? (moneda.mostrarCOP ? '$59,900/mes' : '$19.99/mes')
-                          : planSeleccionado === 'business'
-                          ? (moneda.mostrarCOP ? '$99,900/mes' : '$49.99/mes')
-                          : (moneda.mostrarCOP ? '$199,900/mes' : '$99.90/mes')
-                        }
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setModalidadSeleccionada('anual')}
-                      className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                        modalidadSeleccionada === 'anual'
-                          ? 'bg-cyan-600 text-white'
-                          : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                      }`}
-                    >
-                      Contrato Anual
-                      <span className="block text-[10px] opacity-80">
-                        {planSeleccionado === 'pro'
-                          ? (moneda.mostrarCOP ? '$599,000/año' : '$199/año')
-                          : planSeleccionado === 'business'
-                          ? (moneda.mostrarCOP ? '$999,000/año' : '$499/año')
-                          : (moneda.mostrarCOP ? '$1,999,000/año' : '$999/año')
-                        }
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
-<div className="mb-4">
-  <label className="flex items-start gap-2 cursor-pointer">
-    <input
-      type="checkbox"
-      checked={aceptaTerminos}
-      onChange={(e) => setAceptaTerminos(e.target.checked)}
-      className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
-      required
-    />
-    <span className="text-gray-400 text-xs">
-      {t.aceptarTerminos} 
-      <a 
-        href={idioma === 'es' ? '/terminos.html' : '/terms.html'} 
-        target="_blank" 
-        className="text-cyan-400 hover:underline ml-1"
-      >
-        {t.terminosLink}
-      </a>
-    </span>
-  </label>
-</div>
+              <div className="mb-4">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aceptaTerminos}
+                    onChange={(e) => setAceptaTerminos(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
+                    required
+                  />
+                  <span className="text-gray-400 text-xs">
+                    {t.aceptarTerminos} 
+                    <a 
+                      href={idioma === 'es' ? '/terminos.html' : '/terms.html'} 
+                      target="_blank" 
+                      className="text-cyan-400 hover:underline ml-1"
+                    >
+                      {t.terminosLink}
+                    </a>
+                  </span>
+                </label>
+              </div>
             </>
           )}
           
