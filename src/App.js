@@ -15,7 +15,7 @@ import {
   where,
   getDocs
 } from 'firebase/firestore';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendEmailVerification } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { auditarOperacion, procesarCosteo, analizarSaludFinanciera } from './logic/logicEngine';
 import jsPDF from 'jspdf';
@@ -24,6 +24,8 @@ import emailjs from '@emailjs/browser';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { handleEscaneoDocumentos, registrarCompraEnRegistros, actualizarInventarioAcumulado } from './util/ocrEngine';
 import CheckoutMercadoPago from './components/CheckoutMercadoPago';
+//import CheckoutStripe from './components/CheckoutStripe'; // Oculto Temporalmente
+// import AdminPanel from './components/AdminPanel';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAgEy1bbqfV4ugPbEdF8pccihUogwfIVDE",
@@ -567,7 +569,7 @@ const PantallaLogin = ({
   showConfirmPassword, setShowConfirmPassword, nombreRegistro, setNombreRegistro,
   planSeleccionado, setPlanSeleccionado,
   aceptaTerminos, setAceptaTerminos,
-  handleRegistro, handleLogin, setEsRegistro, setErrorAuth, reenviarVerificacion,
+  handleRegistro, handleLogin, setEsRegistro, setErrorAuth, reenviarVerificacion, handleResetPassword,
   onChangeIdioma
 }) => {
   return (
@@ -796,6 +798,19 @@ const PantallaLogin = ({
             </button>
           </div>
         )}
+
+        {/* Botón de recuperación de contraseña */}
+        {!esRegistro && (
+          <div className="text-center mt-3">
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              className="text-cyan-400 text-xs hover:underline cursor-pointer"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
+        )}
         
         <div className="text-center mt-4">
           <button
@@ -919,6 +934,12 @@ const App = () => {
   // ============================================================
   const [mostrarCheckout, setMostrarCheckout] = useState(false);
   const [planSeleccionadoPago, setPlanSeleccionadoPago] = useState(null);
+
+  // ============================================================
+  // NUEVOS ESTADOS PARA STRIPE
+  // ============================================================
+  //const [mostrarCheckoutStripe, setMostrarCheckoutStripe] = useState(false); // Oculto Temporalmente
+  //const [planSeleccionadoStripe, setPlanSeleccionadoStripe] = useState(null); // Oculto Temporalmente
 
 // ============================================================
 // VERIFICAR PAGO PENDIENTE DE MERCADO PAGO
@@ -1464,6 +1485,85 @@ useEffect(() => {
       setGenerandoReporte(false);
     }
   }, [movimientos, cuentasPorPagar, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
+
+  // ============================================================
+  // EXPORTAR A EXCEL/CSV
+  // ============================================================
+  const exportarACSV = () => {
+    if (!usuarioActual?.uid) return;
+    
+    // Verificar si el plan permite exportar
+    if (!puedeAccederAFuncion('puedeExportarExcel')) {
+      setFuncionBloqueada('Exportar a Excel/CSV');
+      setModalUpgradeOpen(true);
+      return;
+    }
+    
+    if (movimientos.length === 0) {
+      setError('No hay registros para exportar');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    
+    // Preparar datos para CSV
+    const headers = ['Fecha', 'Concepto', 'Categoría', 'Valor', 'Tipo', 'Cantidad', 'Proveedor', 'Factura'];
+    const rows = movimientos.map(m => [
+      m.fecha ? new Date(m.fecha).toLocaleDateString('es-CO') : '',
+      m.concepto || '',
+      m.categoria || '',
+      m.valor || 0,
+      m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+      m.cantidad || 1,
+      m.proveedor || '',
+      m.numeroFactura || ''
+    ]);
+    
+    // Crear contenido CSV
+    const csvContent = [headers, ...rows].map(row => 
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+    
+    // Agregar BOM para caracteres especiales en español
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const fecha = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    
+    link.href = url;
+    link.setAttribute('download', `STRATIUM_AI_Registros_${fecha}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    setValidationMessage(`✅ Exportados ${movimientos.length} registros a CSV`);
+    setTimeout(() => setValidationMessage(null), 4000);
+  };
+
+  // ============================================================
+  // RECUPERACIÓN DE CONTRASEÑA
+  // ============================================================
+  const handleResetPassword = async () => {
+    if (!emailLogin) {
+      setErrorAuth('Ingresa tu correo electrónico primero');
+      return;
+    }
+    setErrorAuth('');
+    setValidationMessage('Enviando correo de recuperación...');
+    
+    try {
+      await sendPasswordResetEmail(auth, emailLogin);
+      setValidationMessage(`📧 Se ha enviado un correo de recuperación a ${emailLogin}. Revisa tu bandeja de entrada o spam.`);
+      setTimeout(() => setValidationMessage(null), 8000);
+    } catch (error) {
+      console.error('Error en recuperación:', error);
+      if (error.code === 'auth/user-not-found') {
+        setErrorAuth('No existe una cuenta con este correo electrónico.');
+      } else {
+        setErrorAuth(error.message);
+      }
+    }
+  };
 
   // ============================================================
   // OBTENER EMOJIS
@@ -2382,68 +2482,75 @@ useEffect(() => {
   // FUNCIONES DE AUTENTICACIÓN (CON PLAN 3 - 500 ESCANEOS)
   // ============================================================
   const handleRegistro = async (e) => {
-    e.preventDefault();
-    setErrorAuth('');
-    
-    if (!aceptaTerminos) {
-      setErrorAuth('Debes aceptar los Términos y Condiciones para continuar.');
-      return;
-    }
-    
-    if (passwordLogin !== confirmPassword) {
-      setErrorAuth(t.passwordsDontMatch);
-      return;
-    }
-    
-    const planData = {
-      gratis: { creditosOCR: 3, duracionDias: 15 },
-      pro: { creditosOCR: 30, duracionDias: 30 },
-      business: { creditosOCR: 100, duracionDias: 30 },
-      elite: { creditosOCR: 500, duracionDias: 30 }
-    };
-    
-    const selectedPlan = planData[planSeleccionado];
-    const fechaVencimiento = new Date();
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + selectedPlan.duracionDias);
-    
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, emailLogin, passwordLogin);
-      const user = userCredential.user;
-      await sendEmailVerification(user);
-      
-      await addDoc(collection(db, 'usuarios'), {
-        uid: user.uid,
-        email: user.email,
-        nombre: nombreRegistro || user.email.split('@')[0],
-        plan: planSeleccionado,
-        modalidad: planSeleccionado === 'gratis' ? null : modalidadSeleccionada,
-        creditosOCR: selectedPlan.creditosOCR,
-        creditosUsados: 0,
-        fechaVencimiento: fechaVencimiento,
-        fechaInicio: new Date(),
-        estado: 'pendiente_verificacion',
-        emailVerificado: false,
-        fechaRegistro: serverTimestamp(),
-        fechaVerificacionEnviada: new Date().toISOString(),
-        terminosAceptados: true,
-        terminosAceptadosFecha: serverTimestamp(),
-        terminosAceptadosIP: 'client-side'
-      });
-      
-      setValidationMessage(`📧 Se ha enviado un correo de verificación a ${user.email}. Tienes 30 minutos.`);
-      setEmailLogin('');
-      setPasswordLogin('');
-      setConfirmPassword('');
-      setNombreRegistro('');
-      setAceptaTerminos(false);
-      setEsRegistro(false);
-      setTimeout(() => setValidationMessage(null), 10000);
-      
-    } catch (err) {
-      console.error('Error en registro:', err);
-      setErrorAuth(err.message);
-    }
+  e.preventDefault();
+  setErrorAuth('');
+  
+  if (!aceptaTerminos) {
+    setErrorAuth('Debes aceptar los Términos y Condiciones para continuar.');
+    return;
+  }
+  
+  if (passwordLogin !== confirmPassword) {
+    setErrorAuth(t.passwordsDontMatch);
+    return;
+  }
+  
+  const planData = {
+    gratis: { creditosOCR: 3, duracionDias: 15 },
+    pro: { creditosOCR: 30, duracionDias: 30 },
+    business: { creditosOCR: 100, duracionDias: 30 },
+    elite: { creditosOCR: 500, duracionDias: 30 }
   };
+  
+  const selectedPlan = planData[planSeleccionado];
+  const fechaVencimiento = new Date();
+  fechaVencimiento.setDate(fechaVencimiento.getDate() + selectedPlan.duracionDias);
+  
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, emailLogin, passwordLogin);
+    const user = userCredential.user;
+    
+    // ESPERAR a que Firebase termine de autenticar
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // REFRESCAR el token de autenticación
+    await user.getIdToken(true);
+    
+    await sendEmailVerification(user);
+    
+    await addDoc(collection(db, 'usuarios'), {
+      uid: user.uid,
+      email: user.email,
+      nombre: nombreRegistro || user.email.split('@')[0],
+      plan: planSeleccionado,
+      modalidad: planSeleccionado === 'gratis' ? null : modalidadSeleccionada,
+      creditosOCR: selectedPlan.creditosOCR,
+      creditosUsados: 0,
+      fechaVencimiento: fechaVencimiento,
+      fechaInicio: new Date(),
+      estado: 'pendiente_verificacion',
+      emailVerificado: false,
+      fechaRegistro: new Date(),
+      fechaVerificacionEnviada: new Date().toISOString(),
+      terminosAceptados: true,
+      terminosAceptadosFecha: new Date(),
+      terminosAceptadosIP: 'client-side'
+    });
+    
+    setValidationMessage(`📧 Se ha enviado un correo de verificación a ${user.email}.`);
+    setEmailLogin('');
+    setPasswordLogin('');
+    setConfirmPassword('');
+    setNombreRegistro('');
+    setAceptaTerminos(false);
+    setEsRegistro(false);
+    setTimeout(() => setValidationMessage(null), 10000);
+    
+  } catch (err) {
+    console.error('Error en registro:', err);
+    setErrorAuth(err.message);
+  }
+};
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -2771,7 +2878,7 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   };
 
   // ============================================================
-  // MODAL DE UPGRADE (CON BOTONES DE PAGO)
+  // MODAL DE UPGRADE (CON BOTONES DE PAGO - SOLO MERCADO PAGO)
   // ============================================================
   const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => {
     if (!isOpen) return null;
@@ -2799,8 +2906,22 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
                 onClick={() => onSeleccionarPlan('pro')}
                 className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
               >
-                Pagar {moneda.mostrarCOP ? '$59,900' : '$19.99'}
+                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$59,900' : '$19.99'}
               </button>
+              {/* Stripe oculto temporalmente - Solo visible desde USA
+              {!moneda.mostrarCOP && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    setPlanSeleccionadoStripe('pro');
+                    setMostrarCheckoutStripe(true);
+                  }}
+                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+                >
+                  Pagar con Stripe - $19.99 USD
+                </button>
+              )}
+              */}
             </div>
 
             {/* Plan 2 - Business */}
@@ -2814,8 +2935,22 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
                 onClick={() => onSeleccionarPlan('business')}
                 className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
               >
-                Pagar {moneda.mostrarCOP ? '$99,900' : '$49.99'}
+                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$99,900' : '$49.99'}
               </button>
+              {/* Stripe oculto temporalmente - Solo visible desde USA
+              {!moneda.mostrarCOP && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    setPlanSeleccionadoStripe('business');
+                    setMostrarCheckoutStripe(true);
+                  }}
+                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+                >
+                  Pagar con Stripe - $49.99 USD
+                </button>
+              )}
+              */}
             </div>
 
             {/* Plan 3 - Elite */}
@@ -2829,8 +2964,22 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
                 onClick={() => onSeleccionarPlan('elite')}
                 className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
               >
-                Pagar {moneda.mostrarCOP ? '$199,900' : '$99.90'}
+                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$199,900' : '$99.90'}
               </button>
+              {/* Stripe oculto temporalmente - Solo visible desde USA
+              {!moneda.mostrarCOP && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    setPlanSeleccionadoStripe('elite');
+                    setMostrarCheckoutStripe(true);
+                  }}
+                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+                >
+                  Pagar con Stripe - $99.90 USD
+                </button>
+              )}
+              */}
               <p className="text-yellow-500/70 text-[10px] mt-2 text-center">✨ Ideal para negocios en crecimiento con alta rotación</p>
             </div>
           </div>
@@ -3254,6 +3403,7 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
       setEsRegistro={setEsRegistro}
       setErrorAuth={setErrorAuth}
       reenviarVerificacion={reenviarVerificacion}
+      handleResetPassword={handleResetPassword}
     />
   );
 }
@@ -3327,6 +3477,22 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
             >
               <span>📊</span>
               <span className="hidden sm:inline">{generandoReporte ? t.generando : t.reporte}</span>
+            </button>
+
+            {/* Botón exportar CSV */}
+            <button
+              onClick={exportarACSV}
+              disabled={movimientos.length === 0}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
+                !puedeAccederAFuncion('puedeExportarExcel')
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                  : movimientos.length === 0
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  : 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30'
+              }`}
+            >
+              <span>📎</span>
+              <span className="hidden sm:inline">Exportar CSV</span>
             </button>
             
             <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 ${subiendoArchivo ? 'opacity-50 cursor-wait' : ''}`}>
@@ -3641,6 +3807,9 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
             </div>
           </div>
         </div>
+
+        {/* PANEL DE ADMINISTRACIÓN */}
+        {/* <AdminPanel usuarioActual={usuarioActual} /> */}
 
         {/* PANEL DEL SARGENTO FINANCIERO */}
         {analisisSalud && (
@@ -3983,17 +4152,17 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
       
       {/* Modales */}
       <ModalUpgrade
-  isOpen={modalUpgradeOpen}
-  onClose={() => setModalUpgradeOpen(false)}
-  funcionNombre={funcionBloqueada}
-  onSeleccionarPlan={(plan) => {
-    setModalUpgradeOpen(false);
-    localStorage.setItem('pendingPlan', plan);
-    localStorage.setItem('pendingUserId', usuarioActual?.uid);
-    setPlanSeleccionadoPago(plan);
-    setMostrarCheckout(true);
-  }}
-/>
+        isOpen={modalUpgradeOpen}
+        onClose={() => setModalUpgradeOpen(false)}
+        funcionNombre={funcionBloqueada}
+        onSeleccionarPlan={(plan) => {
+          setModalUpgradeOpen(false);
+          localStorage.setItem('pendingPlan', plan);
+          localStorage.setItem('pendingUserId', usuarioActual?.uid);
+          setPlanSeleccionadoPago(plan);
+          setMostrarCheckout(true);
+        }}
+      />
       
       <ModalFechaVencimiento
         isOpen={mostrarModalVencimiento}
@@ -4024,10 +4193,33 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
           onClose={() => setMostrarCheckout(false)}
         />
       )}
+
+            {/* Modal de pago con Stripe - OCULTO TEMPORALMENTE */}
+      {/*
+      {mostrarCheckoutStripe && (
+        <CheckoutStripe
+          plan={planSeleccionadoStripe}
+          userEmail={usuarioActual?.email}
+          userId={usuarioActual?.uid}
+          moneda={moneda}
+          onSuccess={() => {
+            setMostrarCheckoutStripe(false);
+            setValidationMessage('✅ Pago exitoso con Stripe. Tu plan ha sido actualizado.');
+            setTimeout(() => setValidationMessage(null), 5000);
+            setTimeout(() => window.location.reload(), 2000);
+          }}
+          onError={(error) => {
+            setMostrarCheckoutStripe(false);
+            setError('Error en el pago con Stripe: ' + error);
+            setTimeout(() => setError(null), 5000);
+          }}
+          onClose={() => setMostrarCheckoutStripe(false)}
+        />
+      )}
+      */}
     </div>
   );
 };
 
 export default App;
-
 
