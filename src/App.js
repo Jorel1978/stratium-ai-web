@@ -13,19 +13,26 @@ import {
   serverTimestamp,
   updateDoc,
   where,
-  getDocs
+  getDocs,
+  setDoc        // ← AGREGA ESTA LÍNEA (con coma al final si hay más después)
 } from 'firebase/firestore';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auditarOperacion, procesarCosteo, analizarSaludFinanciera } from './logic/logicEngine';
+import { auditarOperacion, procesarCosteo, analizarSaludFinanciera, auditarSobrecostosProveedores } from './logic/logicEngine';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import emailjs from '@emailjs/browser';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { handleEscaneoDocumentos, registrarCompraEnRegistros, actualizarInventarioAcumulado } from './util/ocrEngine';
 import CheckoutMercadoPago from './components/CheckoutMercadoPago';
+import AdminPanel from './components/AdminPanel';
+import MassiveUpload from './components/MassiveUpload';        // ← NUEVO
+import RegistroManual from './components/RegistroManual';      // ← NUEVO
+import { Toaster } from 'react-hot-toast';
+import { programarAlertasDiarias, verificarVencimientoProductos, verificarStockBajo } from './services/alertasService';
+import ProduccionForm from './components/ProduccionForm';
+import ConfiguracionAuditoria from './components/ConfiguracionAuditoria';
 //import CheckoutStripe from './components/CheckoutStripe'; // Oculto Temporalmente
-// import AdminPanel from './components/AdminPanel';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAgEy1bbqfV4ugPbEdF8pccihUogwfIVDE",
@@ -836,9 +843,6 @@ const PantallaLogin = ({
 // COMPONENTE PRINCIPAL App
 // ============================================================
 const App = () => {
-  // Estado para el input mágico
-  const [inputValue, setInputValue] = useState('');
-  
   // Estado para los movimientos (desde Firebase)
   const [movimientos, setMovimientos] = useState([]);
   const [inventario, setInventario] = useState([]);
@@ -936,49 +940,40 @@ const App = () => {
   const [planSeleccionadoPago, setPlanSeleccionadoPago] = useState(null);
 
   // ============================================================
-  // NUEVOS ESTADOS PARA STRIPE
+  // ESTADOS PARA STRIPE
   // ============================================================
   //const [mostrarCheckoutStripe, setMostrarCheckoutStripe] = useState(false); // Oculto Temporalmente
   //const [planSeleccionadoStripe, setPlanSeleccionadoStripe] = useState(null); // Oculto Temporalmente
 
+  // ✅ Estado para el input mágico (mantenido para compatibilidad)
+  const [inputValue, setInputValue] = useState('');
+
+    // ✅ NUEVO ESTADO PARA MODAL DE CONFIGURACIÓN DE AUDITORÍA
+  const [mostrarConfigModal, setMostrarConfigModal] = useState(false);
+
 // ============================================================
-// VERIFICAR PAGO PENDIENTE DE MERCADO PAGO
+// VERIFICAR PAGO PENDIENTE - SOLO LECTURA DE URL (SIN TOKEN)
+// La actualización de Firestore la hace el Webhook del backend
 // ============================================================
 useEffect(() => {
   const urlParams = new URLSearchParams(window.location.search);
-  const paymentId = urlParams.get('payment_id');
   const status = urlParams.get('status');
   const plan = localStorage.getItem('pendingPlan');
   const userId = localStorage.getItem('pendingUserId');
   
-  if (status === 'approved' && paymentId && userId && usuarioActual?.uid === userId) {
-    fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: { 
-        'Authorization': 'Bearer TEST-2082807274972579-040613-aed5f6a1cced0244b4bed0b0fac0bd9c-3087415746'
-      }
-    })
-    .then(res => res.json())
-    .then(payment => {
-      if (payment.status === 'approved') {
-        const planCreditos = { pro: 30, business: 100, elite: 500 };
-        const fechaVencimiento = new Date();
-        fechaVencimiento.setDate(fechaVencimiento.getDate() + 30);
-        
-        updateDoc(doc(db, 'usuarios', userId), {
-          plan: plan,
-          creditosOCR: planCreditos[plan],
-          creditosUsados: 0,
-          fechaVencimiento: fechaVencimiento
-        }).then(() => {
-          localStorage.removeItem('pendingPlan');
-          localStorage.removeItem('pendingUserId');
-          setValidationMessage(`✅ Pago exitoso! Plan ${plan} activado.`);
-          setTimeout(() => setValidationMessage(null), 5000);
-          setTimeout(() => window.location.reload(), 2000);
-        });
-      }
-    })
-    .catch(error => console.error('Error verificando pago:', error));
+  // Solo verificar el estado en la URL, sin llamadas a la API
+  if (status === 'approved' && userId && usuarioActual?.uid === userId) {
+    // Mostrar mensaje de éxito al usuario
+    setValidationMessage(`✅ Pago exitoso! Plan ${plan} activado. El sistema se actualizará en unos segundos.`);
+    
+    // Limpiar localStorage
+    localStorage.removeItem('pendingPlan');
+    localStorage.removeItem('pendingUserId');
+    
+    // Recargar la página después de 3 segundos para que el webhook haya actualizado los datos
+    setTimeout(() => {
+      window.location.reload();
+    }, 3000);
   }
 }, [usuarioActual]);
 
@@ -1078,37 +1073,61 @@ useEffect(() => {
   // ============================================================
   // VERIFICAR CRÉDITOS Y VENCIMIENTO DEL PLAN
   // ============================================================
+  
   const verificarCreditosYVencimiento = useCallback(async () => {
-    if (!usuarioActual?.uid) return { valido: false, mensaje: 'No autenticado', necesitaUpgrade: false };
-    
-    // Verificar vencimiento del plan (solo para Starter)
-    if (usuarioActual.plan === 'gratis' || usuarioActual.plan === 'starter') {
-      const hoy = new Date();
-      const fechaVencimiento = usuarioActual.fechaVencimiento?.toDate ? 
-        usuarioActual.fechaVencimiento.toDate() : new Date(usuarioActual.fechaVencimiento);
-      
-      if (hoy > fechaVencimiento) {
-        return { 
-          valido: false, 
-          mensaje: 'Tu período de prueba ha terminado. Selecciona un plan para continuar.', 
-          necesitaUpgrade: true 
-        };
-      }
-    }
-    
-    // Verificar créditos restantes para TODOS los planes (incluido Elite)
-    const creditosDisponibles = (usuarioActual.creditosOCR || 0) - (usuarioActual.creditosUsados || 0);
-    
-    if (creditosDisponibles <= 0) {
+  if (!usuarioActual?.uid) return { valido: false, mensaje: 'No autenticado', necesitaUpgrade: false };
+  
+  // ============================================================
+  // NUEVO: Verificar suscripción activa (para planes de pago)
+  // ============================================================
+  if (usuarioActual.plan !== 'gratis' && usuarioActual.plan !== 'starter') {
+    // Si la suscripción no está activa, bloquear
+    if (usuarioActual.suscripcionActiva !== true) {
       return { 
         valido: false, 
-        mensaje: 'Has agotado tus créditos de escaneo. Actualiza tu plan para más escaneos.', 
+        mensaje: 'Tu suscripción no está activa. Por favor, activa tu suscripción para continuar.', 
         necesitaUpgrade: true 
       };
     }
     
-    return { valido: true, creditosDisponibles, mensaje: `${creditosDisponibles} escaneos disponibles` };
-  }, [usuarioActual]);
+    // Si la vigencia es 0 o menor, la suscripción expiró
+    if (usuarioActual.vigencia <= 0) {
+      return { 
+        valido: false, 
+        mensaje: 'Tu suscripción ha expirado. Renueva para continuar.', 
+        necesitaUpgrade: true 
+      };
+    }
+  }
+  
+  // Verificar vencimiento del plan (solo para Starter)
+  if (usuarioActual.plan === 'gratis' || usuarioActual.plan === 'starter') {
+    const hoy = new Date();
+    const fechaVencimiento = usuarioActual.fechaVencimiento?.toDate ? 
+      usuarioActual.fechaVencimiento.toDate() : new Date(usuarioActual.fechaVencimiento);
+    
+    if (hoy > fechaVencimiento) {
+      return { 
+        valido: false, 
+        mensaje: 'Tu período de prueba ha terminado. Selecciona un plan para continuar.', 
+        necesitaUpgrade: true 
+      };
+    }
+  }
+  
+  // Verificar créditos restantes para TODOS los planes
+  const creditosDisponibles = (usuarioActual.creditosOCR || 0) - (usuarioActual.creditosUsados || 0);
+  
+  if (creditosDisponibles <= 0) {
+    return { 
+      valido: false, 
+      mensaje: 'Has agotado tus créditos de escaneo. Actualiza tu plan para más escaneos.', 
+      necesitaUpgrade: true 
+    };
+  }
+  
+  return { valido: true, creditosDisponibles, mensaje: `${creditosDisponibles} escaneos disponibles` };
+}, [usuarioActual]);
 
   const consumirCreditoOCR = useCallback(async () => {
     if (!usuarioActual?.uid) return false;
@@ -1486,6 +1505,52 @@ useEffect(() => {
     }
   }, [movimientos, cuentasPorPagar, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
 
+// ============================================================
+// REPORTE CORTO (PREVIEW) - PARA PLAN FREE/STARTER
+// ============================================================
+const generarReportePreview = () => {
+  const doc = new jsPDF();
+  
+  // Título
+  doc.setFontSize(18);
+  doc.text('STRATIUM AI', 105, 20, { align: 'center' });
+  doc.setFontSize(14);
+  doc.text('Reporte Ejecutivo', 105, 35, { align: 'center' });
+  doc.setFontSize(9);
+  doc.text(`Generado: ${new Date().toLocaleString()}`, 105, 45, { align: 'center' });
+  
+  // Estado de Resultados (PyG)
+  doc.setFontSize(12);
+  doc.text('Estado de Resultados', 20, 65);
+  doc.setFontSize(10);
+  doc.text(`Ventas: ${formatearValor(ventasTotales)}`, 25, 80);
+  doc.text(`Gastos: ${formatearValor(gastosTotales)}`, 25, 90);
+  doc.text(`Utilidad: ${formatearValor(utilidadEstimada)}`, 25, 100);
+  doc.text(`Margen: ${margen}%`, 25, 110);
+  
+  // Inventario (Top 5)
+  doc.setFontSize(12);
+  doc.text('Inventario (Top 5)', 20, 130);
+  doc.setFontSize(9);
+  let y = 145;
+  const topInventario = inventario.slice(0, 5);
+  if (topInventario.length === 0) {
+    doc.text('No hay productos en inventario', 25, y);
+  } else {
+    topInventario.forEach(item => {
+      if (y > 270) return;
+      doc.text(`${item.producto}: ${item.cantidad} unidades`, 25, y);
+      y += 8;
+    });
+  }
+  
+  // Pie de página
+  doc.setFontSize(8);
+  doc.text('Este es un reporte de prueba. Actualiza tu plan para reportes completos.', 105, 285, { align: 'center' });
+  
+  doc.save('STRATIUM_Preview.pdf');
+};
+
   // ============================================================
   // EXPORTAR A EXCEL/CSV
   // ============================================================
@@ -1580,56 +1645,89 @@ useEffect(() => {
   }, []);
 
   // ============================================================
-  // GENERAR DICTAMEN GENERAL
-  // ============================================================
-  const generarDictamenGeneral = useCallback((movs) => {
-    const hoy = new Date();
-    const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const fechaLimite = obtenerFechaLimiteHistorial();
-    const movimientosMes = movs.filter(m => {
-      if (!m.fecha) return false;
-      const fechaMov = new Date(m.fecha);
-      return fechaMov >= primerDiaMes && fechaMov <= hoy && fechaMov >= fechaLimite;
-    });
-    
-    const ventas = movimientosMes.filter(m => m.tipo === 'ingreso');
-    const compras = movimientosMes.filter(m => m.tipo === 'egreso');
-    const ventasTotales = ventas.reduce((s, m) => s + m.valor, 0);
-    const comprasTotales = compras.reduce((s, m) => s + m.valor, 0);
-    const saldo = ventasTotales - comprasTotales;
-    const margenCalc = ventasTotales > 0 ? ((saldo / ventasTotales) * 100).toFixed(1) : 0;
-    
-    const formatearValorLocal = (valor) => {
-      return new Intl.NumberFormat('es-CO', {
-        style: 'currency', currency: 'COP',
-        minimumFractionDigits: 0, maximumFractionDigits: 0
-      }).format(Math.abs(valor));
-    };
-    
-    let textoDictamen = '';
-    
-    if (movimientosMes.length === 0) {
-      textoDictamen = 'No hay transacciones en el periodo actual. Comienza a registrar tus operaciones para obtener un análisis financiero.';
+// GENERAR DICTAMEN GENERAL (VERSIÓN MEJORADA)
+// ============================================================
+const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
+  const hoy = new Date();
+  const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const fechaLimite = obtenerFechaLimiteHistorial();
+  const movimientosMes = movs.filter(m => {
+    if (!m.fecha) return false;
+    const fechaMov = new Date(m.fecha);
+    return fechaMov >= primerDiaMes && fechaMov <= hoy && fechaMov >= fechaLimite;
+  });
+  
+  const ventas = movimientosMes.filter(m => m.tipo === 'ingreso');
+  const compras = movimientosMes.filter(m => m.tipo === 'egreso');
+  const ventasTotales = ventas.reduce((s, m) => s + m.valor, 0);
+  const comprasTotales = compras.reduce((s, m) => s + m.valor, 0);
+  const saldo = ventasTotales - comprasTotales;
+  const margenCalc = ventasTotales > 0 ? ((saldo / ventasTotales) * 100).toFixed(1) : 0;
+  
+  const formatearValorLocal = (valor) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency', currency: 'COP',
+      minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(Math.abs(valor));
+  };
+  
+  let textoDictamen = '';
+  
+  if (movimientosMes.length === 0) {
+    textoDictamen = 'No hay transacciones en el periodo actual. Comienza a registrar tus operaciones para obtener un análisis financiero.';
+  } else {
+    // Versión corta para plan Free/Starter
+    if (!esPlanPago) {
+      textoDictamen = `📊 REPORTE EJECUTIVO\n━━━━━━━━━━━━━━━━━━━━━\n`;
+      textoDictamen += `📈 Ventas: ${formatearValorLocal(ventasTotales)}\n`;
+      textoDictamen += `📉 Gastos: ${formatearValorLocal(comprasTotales)}\n`;
+      textoDictamen += `💰 Utilidad: ${formatearValorLocal(saldo)}\n`;
+      textoDictamen += `📊 Margen: ${margenCalc}%\n\n`;
+      
+      // Detectar productos con +180 días sin rotación
+      const productosLentos = inventario.filter(item => {
+        if (!item.producto || item.cantidad <= 0) return false;
+        const ventasProducto = movimientosMes.filter(m => 
+          m.tipo === 'ingreso' && 
+          m.concepto?.toLowerCase() === item.producto.toLowerCase()
+        );
+        if (ventasProducto.length === 0) return true;
+        const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
+        const dias = Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
+        return dias > 180;
+      });
+      
+      if (productosLentos.length > 0) {
+        textoDictamen += `⚠️ ALERTA DE INVENTARIO:\n`;
+        productosLentos.slice(0, 3).forEach(p => {
+          textoDictamen += `   • ${p.producto}: ${p.cantidad} unidades sin rotación\n`;
+        });
+        textoDictamen += `\n💡 Actualiza a Plan Business para análisis detallado y precios sugeridos.\n`;
+      }
     } else {
-      textoDictamen = `ANALISIS FINANCIERO (${obtenerPrimerDiaMes()} al ${obtenerFechaActual()})\n`;
-      textoDictamen += `Total Ingresos: ${formatearValorLocal(ventasTotales)}\n`;
-      textoDictamen += `Total Egresos: ${formatearValorLocal(comprasTotales)}\n`;
-      textoDictamen += `Saldo Neto: ${formatearValorLocal(saldo)}\n`;
-      textoDictamen += `Margen Neto: ${margenCalc}%\n\n`;
+      // Versión completa para planes de pago
+      textoDictamen = `📊 ANALISIS FINANCIERO DETALLADO\n━━━━━━━━━━━━━━━━━━━━━\n`;
+      textoDictamen += `Período: ${obtenerPrimerDiaMes()} al ${obtenerFechaActual()}\n`;
+      textoDictamen += `📈 Ventas: ${formatearValorLocal(ventasTotales)}\n`;
+      textoDictamen += `📉 Gastos: ${formatearValorLocal(comprasTotales)}\n`;
+      textoDictamen += `💰 Utilidad Neta: ${formatearValorLocal(saldo)}\n`;
+      textoDictamen += `📊 Margen Neto: ${margenCalc}%\n`;
+      textoDictamen += `💵 Capital Inyectado: ${formatearValorLocal(usuarioActual?.aportesPersonales || 0)}\n`;
+      textoDictamen += `🏦 Deuda con Dueño: ${formatearValorLocal(usuarioActual?.deudaConDueño || 0)}\n\n`;
       
       if (saldo < 0) {
-        textoDictamen += `ALERTA: El saldo es negativo. Se recomienda revisar los gastos operativos y priorizar el cobro de cuentas por cobrar.\n\n`;
-      } else if (saldo > 0 && margenCalc < 15) {
-        textoDictamen += `El margen es bajo (${margenCalc}%). Considere optimizar costos o ajustar precios.\n\n`;
+        textoDictamen += `⚠️ ALERTA: El saldo es negativo. Tus gastos superan tus ingresos.\n`;
+        textoDictamen += `💡 Revisa la sección de "Alertas" para recomendaciones específicas.\n`;
       } else if (saldo > 0 && margenCalc > 25) {
-        textoDictamen += `Excelente rentabilidad. Mantenga la estrategia actual y evalue oportunidades de expansion.\n\n`;
+        textoDictamen += `✅ Excelente rentabilidad. Mantén la estrategia actual.\n`;
       } else {
-        textoDictamen += `La operacion es estable. Continue monitoreando los indicadores clave.\n\n`;
+        textoDictamen += `📢 La operación es estable. Monitorea tus indicadores clave.\n`;
       }
     }
-    
-    setDictamenGeneral(textoDictamen);
-  }, [obtenerFechaLimiteHistorial]);
+  }
+  
+  setDictamenGeneral(textoDictamen);
+}, [obtenerFechaLimiteHistorial, obtenerPrimerDiaMes, obtenerFechaActual, inventario, usuarioActual]);
 
   // ============================================================
   // REGISTRAR COMPRA CON FECHA DE VENCIMIENTO (NUEVO)
@@ -1866,41 +1964,93 @@ useEffect(() => {
   // ============================================================
   // FUNCIÓN DE ESCANEO OCR REAL
   // ============================================================
-  const procesarEscaneoOCRReal = async (textoComando, imagenFile, db, registrosCollection, inventarioCollection, userId, monedaUsuario) => {
-    try {
-      const resultadoOCR = await handleEscaneoDocumentos(imagenFile, textoComando, monedaUsuario);
-      
-      if (!resultadoOCR.success) {
-        return { tipo: 'error', mensaje: resultadoOCR.mensaje };
-      }
-      
-      for (const producto of resultadoOCR.productosReventa) {
-        await registrarCompraEnRegistros({
-          concepto: producto.nombre,
-          cantidad: producto.cantidad,
-          valor_unitario_base: producto.precioUnitario,
-          tax_item: producto.impuestoValor,
-          flujo: 'INVENTARIO',
-          tercero: resultadoOCR.proveedor,
-          estado: resultadoOCR.estado,
-          factura: resultadoOCR.factura,
-          fecha: resultadoOCR.fecha,
-          moneda: monedaUsuario
-        }, db, userId);
-        
-        await actualizarInventarioAcumulado(producto.nombre, producto.cantidad, producto.precioUnitario, db, userId);
-      }
-      
-      return {
-        tipo: 'escaneo',
-        mensaje: resultadoOCR.mensaje
-      };
-      
-    } catch (err) {
-      console.error('Error en escaneo OCR:', err);
-      return { tipo: 'error', mensaje: err.message };
+  const procesarEscaneoOCRReal = async (textoComando, imagenFile, db, registrosCollection, inventarioCollection, userId, monedaUsuario, fuentePago = 'negocio') => {
+  try {
+    const resultadoOCR = await handleEscaneoDocumentos(imagenFile, textoComando, monedaUsuario);
+    
+    if (!resultadoOCR.success) {
+      return { tipo: 'error', mensaje: resultadoOCR.mensaje };
     }
-  };
+    
+    // 🔥 NUEVO: Identificar producto objetivo para revender
+    const matchProducto = textoComando.match(/(?:escanea|scan):\s*(?:compra|purchase)\s+(?:de\s+)?([a-záéíóúñ\s]+?)(?:\s+el\s+resto|\s+para\s+uso\s+personal|\s*$)/i);
+    const productoObjetivo = matchProducto ? matchProducto[1].trim().toLowerCase() : null;
+    
+    let productosReventa = [];
+    let productosGastoPersonal = [];
+    
+    if (productoObjetivo) {
+      // Separar productos según el objetivo
+      for (const producto of resultadoOCR.productosReventa) {
+        if (producto.nombre.toLowerCase().includes(productoObjetivo)) {
+          productosReventa.push(producto);
+        } else {
+          productosGastoPersonal.push(producto);
+        }
+      }
+    } else {
+      // Si no hay producto objetivo, todo va a inventario
+      productosReventa = resultadoOCR.productosReventa;
+    }
+    
+    // 🔥 NUEVO: Registrar productos para revender (inventario)
+    for (const producto of productosReventa) {
+      await registrarCompraEnRegistros({
+        concepto: producto.nombre,
+        cantidad: producto.cantidad,
+        valor_unitario_base: producto.precioUnitario,
+        tax_item: producto.impuestoValor,
+        flujo: 'INVENTARIO',
+        tercero: resultadoOCR.proveedor,
+        estado: resultadoOCR.estado,
+        factura: resultadoOCR.factura,
+        fecha: resultadoOCR.fecha,
+        moneda: monedaUsuario,
+        fuentePago: fuentePago  // ✅ NUEVO: Guardar fuente de pago
+      }, db, userId);
+      
+      await actualizarInventarioAcumulado(producto.nombre, producto.cantidad, producto.precioUnitario, db, userId);
+    }
+    
+    // 🔥 NUEVO: Registrar gastos personales (NO van a inventario)
+    if (productosGastoPersonal.length > 0) {
+      let totalGastosPersonales = 0;
+      for (const producto of productosGastoPersonal) {
+        totalGastosPersonales += producto.cantidad * producto.precioUnitario;
+      }
+      
+      await addDoc(registrosCollection, {
+        texto: `Gasto personal: ${productosGastoPersonal.map(p => `${p.cantidad}x ${p.nombre}`).join(', ')}`,
+        concepto: 'Gastos Personales',
+        valor: totalGastosPersonales,
+        tipo: 'egreso',
+        categoria: 'GASTO_NO_OPERACIONAL',
+        emoji: '💸',
+        cantidad: productosGastoPersonal.reduce((sum, p) => sum + p.cantidad, 0),
+        fecha: serverTimestamp(),
+        userId: userId,
+        fuentePago: fuentePago,  // ✅ NUEVO: Guardar fuente de pago
+        esAportePersonal: fuentePago === 'personal'
+      });
+    }
+    
+    let mensaje = `✅ Factura procesada: ${productosReventa.length} productos agregados al inventario.`;
+    if (productosGastoPersonal.length > 0) {
+      mensaje += ` ${productosGastoPersonal.length} productos registrados como gastos personales.`;
+    }
+    
+    return {
+      tipo: 'escaneo',
+      mensaje: mensaje,
+      productosReventa,
+      productosGastoPersonal
+    };
+    
+  } catch (err) {
+    console.error('Error en escaneo OCR:', err);
+    return { tipo: 'error', mensaje: err.message };
+  }
+};
 
   // ============================================================
   // PROCESAR COMANDOS (MODIFICADO PARA PREGUNTAR POR VENCIMIENTO)
@@ -1912,7 +2062,12 @@ useEffect(() => {
     
     if (textoLower.startsWith('escanea:') || textoLower.startsWith('scan:')) {
       setInputValue(texto);
-      seleccionarImagenFactura();
+      
+      // ✅ NUEVO: Preguntar fuente de pago antes de escanear
+      const fuente = window.confirm('¿Esta compra fue pagada con?\n\nOK = Fondos del negocio\nCancelar = Fondos personales');
+      const fuentePago = fuente ? 'negocio' : 'personal';
+      
+      seleccionarImagenFactura(fuentePago);
       return { tipo: 'info', mensaje: 'Selecciona una imagen de la factura para escanear' };
     }
     
@@ -1966,6 +2121,9 @@ useEffect(() => {
       let concepto = texto.replace(/^(registra:?|compra|purchase|buy)/i, '').trim();
       concepto = concepto.replace(/\d+(?:[.,]\d+)*/g, '').trim();
       if (concepto.length > 50) concepto = concepto.substring(0, 50);
+      
+      // ✅ Guardar producto en catálogo
+      await guardarProductoEnCatalogo(concepto, usuarioActual.uid);
       
       // Guardar datos pendientes para preguntar por vencimiento
       setProductoPendiente(concepto);
@@ -2032,69 +2190,103 @@ useEffect(() => {
     return null;
   };
 
+// ============================================================
+// FUNCIÓN PARA GUARDAR PRODUCTO EN CATÁLOGO
+// ============================================================
+const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
+  if (!nombreProducto || !userId) return;
+  
+  try {
+    const nombreNormalizado = nombreProducto.toLowerCase().trim();
+    
+    // Buscar si ya existe
+    const q = query(
+      collection(db, 'products'),
+      where('userId', '==', userId),
+      where('nombreNormalizado', '==', nombreNormalizado)
+    );
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      // Producto nuevo: guardar en catálogo
+      await addDoc(collection(db, 'products'), {
+        nombre: nombreProducto,
+        nombreNormalizado: nombreNormalizado,
+        userId: userId,
+        fechaCreacion: serverTimestamp(),
+        ultimaActualizacion: serverTimestamp()
+      });
+      console.log(`✅ Producto "${nombreProducto}" agregado al catálogo`);
+    }
+  } catch (error) {
+    console.error('Error guardando producto en catálogo:', error);
+  }
+};
+
   // ============================================================
   // FUNCIONES DE OCR
   // ============================================================
-  const seleccionarImagenFactura = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        setImagenFactura(file);
-        await procesarOCRConImagen(file);
-      }
-    };
-    input.click();
+  const seleccionarImagenFactura = (fuentePago = 'negocio') => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImagenFactura(file);
+      await procesarOCRConImagen(file, fuentePago);
+    }
   };
+  input.click();
+};
 
-  const procesarOCRConImagen = async (imagenFile) => {
-    if (!usuarioActual?.uid || !imagenFile) return;
+  const procesarOCRConImagen = async (imagenFile, fuentePago = 'negocio') => {
+  if (!usuarioActual?.uid || !imagenFile) return;
+  
+  const verificacion = await verificarCreditosYVencimiento();
+  if (!verificacion.valido) {
+    if (verificacion.necesitaUpgrade) {
+      setFuncionBloqueada('Escaneo de facturas');
+      setModalUpgradeOpen(true);
+    }
+    setError(verificacion.mensaje);
+    setTimeout(() => setError(null), 5000);
+    return;
+  }
+  
+  setProcesandoOCR(true);
+  setValidationMessage(`Procesando OCR... ${verificacion.creditosDisponibles} escaneos restantes`);
+  
+  try {
+    const resultado = await procesarEscaneoOCRReal(
+      inputValue,
+      imagenFile,
+      db,
+      registrosCollection,
+      inventarioCollection,
+      usuarioActual.uid,
+      moneda.codigo,
+      fuentePago  // ✅ NUEVO: Pasar fuente de pago
+    );
     
-    const verificacion = await verificarCreditosYVencimiento();
-    if (!verificacion.valido) {
-      if (verificacion.necesitaUpgrade) {
-        setFuncionBloqueada('Escaneo de facturas');
-        setModalUpgradeOpen(true);
-      }
-      setError(verificacion.mensaje);
+    if (resultado.tipo === 'escaneo') {
+      const creditosRestantes = await consumirCreditoOCR();
+      setValidationMessage(`${resultado.mensaje}\nTe quedan ${creditosRestantes} escaneos.`);
+      setTimeout(() => setValidationMessage(null), 8000);
+    } else if (resultado.tipo === 'error') {
+      setError(resultado.mensaje);
       setTimeout(() => setError(null), 5000);
-      return;
     }
     
-    setProcesandoOCR(true);
-    setValidationMessage(`Procesando OCR... ${verificacion.creditosDisponibles} escaneos restantes`);
-    
-    try {
-      const resultado = await procesarEscaneoOCRReal(
-        inputValue,
-        imagenFile,
-        db,
-        registrosCollection,
-        inventarioCollection,
-        usuarioActual.uid,
-        moneda.codigo
-      );
-      
-      if (resultado.tipo === 'escaneo') {
-        const creditosRestantes = await consumirCreditoOCR();
-        setValidationMessage(`${resultado.mensaje}\nTe quedan ${creditosRestantes} escaneos.`);
-        setTimeout(() => setValidationMessage(null), 8000);
-      } else if (resultado.tipo === 'error') {
-        setError(resultado.mensaje);
-        setTimeout(() => setError(null), 5000);
-      }
-      
-      setImagenFactura(null);
-      setInputValue('');
-    } catch (err) {
-      console.error('Error procesando OCR:', err);
-      setError('Error al procesar la imagen con OCR');
-    } finally {
-      setProcesandoOCR(false);
-    }
-  };
+    setImagenFactura(null);
+    setInputValue('');
+  } catch (err) {
+    console.error('Error procesando OCR:', err);
+    setError('Error al procesar la imagen con OCR');
+  } finally {
+    setProcesandoOCR(false);
+  }
+};
 
   // ============================================================
   // BLINDAJE CONTRA NEGATIVOS (VALIDACIÓN DE STOCK)
@@ -2212,8 +2404,16 @@ useEffect(() => {
           plan: userData.plan || 'gratis',
           whatsappNumber: userData.whatsappNumber || null,
           dataVersion: userData.dataVersion || 2,
+          suscripcionActiva: userData.suscripcionActiva || false,
+          vigencia: userData.vigencia || 0,
           ...userData
         });
+        
+        // ✅ EJECUTAR ALERTAS AUTOMÁTICAS AL INICIAR SESIÓN (USUARIO EXISTENTE)
+        if (user.email) {
+          programarAlertasDiarias(user.email).catch(console.error);
+        }
+        
       } else {
         // Usuario nuevo: crear con todos los campos correctos
         const fechaVencimiento = new Date();
@@ -2233,7 +2433,9 @@ useEffect(() => {
           fechaVencimiento: fechaVencimiento,
           fechaInicio: new Date(),
           fechaRegistro: serverTimestamp(),
-          dataVersion: 2
+          dataVersion: 2,
+          suscripcionActiva: false,
+          vigencia: 0
         });
         
         setUsuarioActual({
@@ -2246,8 +2448,15 @@ useEffect(() => {
           creditosOCR: 3,
           creditosUsados: 0,
           fechaVencimiento: fechaVencimiento,
-          dataVersion: 2
+          dataVersion: 2,
+          suscripcionActiva: false,
+          vigencia: 0
         });
+        
+        // ✅ EJECUTAR ALERTAS AUTOMÁTICAS AL INICIAR SESIÓN (USUARIO NUEVO)
+        if (user.email) {
+          programarAlertasDiarias(user.email).catch(console.error);
+        }
       }
       setMostrarLogin(false);
     } else {
@@ -2481,7 +2690,7 @@ useEffect(() => {
   // ============================================================
   // FUNCIONES DE AUTENTICACIÓN (CON PLAN 3 - 500 ESCANEOS)
   // ============================================================
-  const handleRegistro = async (e) => {
+ const handleRegistro = async (e) => {
   e.preventDefault();
   setErrorAuth('');
   
@@ -2497,9 +2706,10 @@ useEffect(() => {
   
   const planData = {
     gratis: { creditosOCR: 3, duracionDias: 15 },
+    starter: { creditosOCR: 10, duracionDias: 30 },
     pro: { creditosOCR: 30, duracionDias: 30 },
-    business: { creditosOCR: 100, duracionDias: 30 },
-    elite: { creditosOCR: 500, duracionDias: 30 }
+    business: { creditosOCR: 120, duracionDias: 30 },
+    elite: { creditosOCR: 300, duracionDias: 30 }
   };
   
   const selectedPlan = planData[planSeleccionado];
@@ -2507,18 +2717,19 @@ useEffect(() => {
   fechaVencimiento.setDate(fechaVencimiento.getDate() + selectedPlan.duracionDias);
   
   try {
+    // 1. Crear usuario en Authentication
     const userCredential = await createUserWithEmailAndPassword(auth, emailLogin, passwordLogin);
     const user = userCredential.user;
     
-    // ESPERAR a que Firebase termine de autenticar
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // REFRESCAR el token de autenticación
-    await user.getIdToken(true);
-    
+    // 2. Enviar correo de verificación
     await sendEmailVerification(user);
     
-    await addDoc(collection(db, 'usuarios'), {
+    // 3. Refrescar token
+    await user.getIdToken(true);
+    
+    // 4. Crear documento en Firestore (usando el UID como ID del documento)
+    // ✅ CORREGIDO: 'usuarios' en lugar de 'users'
+    await setDoc(doc(db, 'usuarios', user.uid), {
       uid: user.uid,
       email: user.email,
       nombre: nombreRegistro || user.email.split('@')[0],
@@ -2534,10 +2745,15 @@ useEffect(() => {
       fechaVerificacionEnviada: new Date().toISOString(),
       terminosAceptados: true,
       terminosAceptadosFecha: new Date(),
-      terminosAceptadosIP: 'client-side'
+      terminosAceptadosIP: 'client-side',
+      suscripcionActiva: false,
+      vigencia: 0,
+      deudaConDueño: 0,
+      aportesPersonales: 0,
+      saldoCaja: 0
     });
     
-    setValidationMessage(`📧 Se ha enviado un correo de verificación a ${user.email}.`);
+    setValidationMessage(`📧 Se ha enviado un correo de verificación a ${user.email}. Revisa tu bandeja de entrada o spam.`);
     setEmailLogin('');
     setPasswordLogin('');
     setConfirmPassword('');
@@ -2548,40 +2764,58 @@ useEffect(() => {
     
   } catch (err) {
     console.error('Error en registro:', err);
-    setErrorAuth(err.message);
+    
+    if (err.code === 'auth/email-already-in-use') {
+      setErrorAuth('❌ Este correo electrónico ya está registrado. Por favor, inicia sesión o usa otro correo.');
+    } else if (err.code === 'auth/weak-password') {
+      setErrorAuth('❌ La contraseña es muy débil. Usa al menos 6 caracteres.');
+    } else if (err.code === 'auth/invalid-email') {
+      setErrorAuth('❌ El correo electrónico no es válido.');
+    } else if (err.message && err.message.includes('permissions')) {
+      setErrorAuth('⚠️ Error de permisos. Por favor, intenta de nuevo en unos minutos.');
+    } else {
+      setErrorAuth(`❌ Error: ${err.message}`);
+    }
   }
 };
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setErrorAuth('');
+  e.preventDefault();
+  setErrorAuth('');
+  
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, emailLogin, passwordLogin);
+    const user = userCredential.user;
     
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, emailLogin, passwordLogin);
-      const user = userCredential.user;
-      
-      if (!user.emailVerified) {
-        await signOut(auth);
-        setErrorAuth('❌ Tu correo electrónico no ha sido verificado. Revisa tu bandeja de entrada o spam. ¿Necesitas reenviar el correo?');
-        return;
-      }
-      
-      setMostrarLogin(false);
-      setEmailLogin('');
-      setPasswordLogin('');
-    } catch (err) {
-      console.error('Error en login:', err);
-      if (err.code === 'auth/user-not-found') {
-        setErrorAuth('No existe una cuenta con este correo electrónico.');
-      } else if (err.code === 'auth/wrong-password') {
-        setErrorAuth('Contraseña incorrecta. Intenta nuevamente.');
-      } else if (err.code === 'auth/too-many-requests') {
-        setErrorAuth('Demasiados intentos fallidos. Intenta más tarde.');
-      } else {
-        setErrorAuth(err.message);
-      }
+    if (!user.emailVerified) {
+      await signOut(auth);
+      setErrorAuth('❌ Tu correo electrónico no ha sido verificado. Revisa tu bandeja de entrada o spam.');
+      return;
     }
-  };
+    
+    setMostrarLogin(false);
+    setEmailLogin('');
+    setPasswordLogin('');
+    
+  } catch (err) {
+    console.error('Error en login:', err);
+    
+    // ✅ Mensajes de error AMIGABLES
+    if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+      setErrorAuth('❌ Contraseña incorrecta. Por favor, inténtalo de nuevo.');
+    } else if (err.code === 'auth/user-not-found') {
+      setErrorAuth('❌ No existe una cuenta con este correo electrónico.');
+    } else if (err.code === 'auth/too-many-requests') {
+      setErrorAuth('❌ Demasiados intentos fallidos. Intenta más tarde.');
+    } else if (err.code === 'auth/invalid-email') {
+      setErrorAuth('❌ El correo electrónico no es válido.');
+    } else if (err.code === 'auth/user-disabled') {
+      setErrorAuth('❌ Esta cuenta ha sido deshabilitada. Contacta a soporte.');
+    } else {
+      setErrorAuth(`❌ Error al iniciar sesión: ${err.message}`);
+    }
+  }
+};
 
   const reenviarVerificacion = async () => {
     if (!emailLogin) {
@@ -2673,32 +2907,37 @@ useEffect(() => {
   // MÓDULO DE PRODUCCIÓN
   // ============================================================
   const calcularProduccion = useCallback(() => {
-    setCalculandoProduccion(true);
-    try {
-      const materiales = parseFloat(produccion.materiales) || 0;
-      const horas = parseFloat(produccion.horas) || 0;
-      const valorHora = parseFloat(produccion.valorHora) || 0;
-      const transporte = parseFloat(produccion.transporte) || 0;
-      const precioVenta = produccion.precioVenta ? parseFloat(produccion.precioVenta) : null;
-      
-      const resultado = procesarCosteo({
-        materiales,
-        horas,
-        valorHora,
-        transporte,
-        precioVenta,
-        config: { valor_hora: 20000, gastos_fijos: 0, moneda: 'COP' }
-      });
-      
-      setCosteoResultado(resultado);
-      
-    } catch (err) {
-      console.error('Error en cálculo de producción:', err);
-      setError('Error al calcular producción.');
-    } finally {
-      setCalculandoProduccion(false);
-    }
-  }, [produccion]);
+  setCalculandoProduccion(true);
+  try {
+    const materiales = parseFloat(produccion.materiales) || 0;
+    const horas = parseFloat(produccion.horas) || 0;
+    const valorHora = parseFloat(produccion.valorHora) || 0;
+    const transporte = parseFloat(produccion.transporte) || 0;
+    const precioVenta = produccion.precioVenta ? parseFloat(produccion.precioVenta) : 0;
+    
+    const costoManoObra = horas * valorHora;
+    const costoTotal = materiales + costoManoObra + transporte;
+    const margenUnitario = precioVenta - costoTotal;
+    const margenPorcentaje = costoTotal > 0 ? (margenUnitario / costoTotal) * 100 : 0;
+    const margenPorHora = horas > 0 ? margenUnitario / horas : 0;
+    
+    setCosteoResultado({
+      costoUnitario: costoTotal,
+      costoMateriales: materiales,
+      costoManoObra: costoManoObra,
+      costoTransporte: transporte,
+      margenUnitario: margenUnitario,
+      margenPorcentaje: margenPorcentaje,
+      margenPorHora: margenPorHora
+    });
+    
+  } catch (err) {
+    console.error('Error en cálculo de producción:', err);
+    setError('Error al calcular producción.');
+  } finally {
+    setCalculandoProduccion(false);
+  }
+}, [produccion]);
   
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -2808,7 +3047,7 @@ useEffect(() => {
         return sum - m.valor;
       }, 0);
       
-      const auditoria = auditarOperacion(texto, valorExtraido, { saldoCaja: saldoActual });
+      const auditoria = auditarOperacion(texto, valorExtraido, { saldoCaja: saldoActual }, idioma);
       
       if (!auditoria.validado) {
         setValidationMessage(auditoria.mensajeValidacion);
@@ -2878,122 +3117,134 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   };
 
   // ============================================================
-  // MODAL DE UPGRADE (CON BOTONES DE PAGO - SOLO MERCADO PAGO)
-  // ============================================================
-  const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => {
-    if (!isOpen) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
-        <div className="bg-[#1e293b] rounded-2xl p-6 max-w-md w-full border border-blue-900/30 shadow-2xl">
-          <div className="text-center mb-4">
-            <div className="text-5xl mb-3">🔒</div>
-            <h3 className="text-xl font-bold text-white">{t.upgradeTitle}</h3>
-            <p className="text-gray-400 text-sm mt-2">
-              {funcionNombre} - {t.upgradeDescription}
-            </p>
-          </div>
-          
-          <div className="space-y-3 mb-6">
-            {/* Plan 1 - Pro */}
-            <div className="bg-slate-800/50 p-3 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-cyan-400 font-bold">{t.plan1}</p>
-                <p className="text-white font-bold">{moneda.mostrarCOP ? '$59,900/mes' : '$19.99/mes'}</p>
-              </div>
-              <p className="text-gray-400 text-xs mb-3">✓ 30 escaneos/mes • ✓ Alertas Push • ✓ Reporte PDF</p>
-              <button
-                onClick={() => onSeleccionarPlan('pro')}
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-              >
-                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$59,900' : '$19.99'}
-              </button>
-              {/* Stripe oculto temporalmente - Solo visible desde USA
-              {!moneda.mostrarCOP && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    setPlanSeleccionadoStripe('pro');
-                    setMostrarCheckoutStripe(true);
-                  }}
-                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-                >
-                  Pagar con Stripe - $19.99 USD
-                </button>
-              )}
-              */}
-            </div>
-
-            {/* Plan 2 - Business */}
-            <div className="bg-slate-800/50 p-3 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-purple-400 font-bold">{t.plan2}</p>
-                <p className="text-white font-bold">{moneda.mostrarCOP ? '$99,900/mes' : '$49.99/mes'}</p>
-              </div>
-              <p className="text-gray-400 text-xs mb-3">✓ 100 escaneos/mes • ✓ Auditoría completa • ✓ Reporte PDF</p>
-              <button
-                onClick={() => onSeleccionarPlan('business')}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-              >
-                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$99,900' : '$49.99'}
-              </button>
-              {/* Stripe oculto temporalmente - Solo visible desde USA
-              {!moneda.mostrarCOP && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    setPlanSeleccionadoStripe('business');
-                    setMostrarCheckoutStripe(true);
-                  }}
-                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-                >
-                  Pagar con Stripe - $49.99 USD
-                </button>
-              )}
-              */}
-            </div>
-
-            {/* Plan 3 - Elite */}
-            <div className="bg-slate-800/50 p-3 rounded-lg border border-yellow-500/30">
-              <div className="flex justify-between items-center mb-2">
-                <p className="text-yellow-400 font-bold">{t.plan3}</p>
-                <p className="text-white font-bold">{moneda.mostrarCOP ? '$199,900/mes' : '$99.90/mes'}</p>
-              </div>
-              <p className="text-gray-400 text-xs mb-3">✓ 500 escaneos/mes • ✓ WhatsApp (alertas críticas) • ✓ Soporte prioritario</p>
-              <button
-                onClick={() => onSeleccionarPlan('elite')}
-                className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-              >
-                Pagar con Mercado Pago - {moneda.mostrarCOP ? '$199,900' : '$99.90'}
-              </button>
-              {/* Stripe oculto temporalmente - Solo visible desde USA
-              {!moneda.mostrarCOP && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    setPlanSeleccionadoStripe('elite');
-                    setMostrarCheckoutStripe(true);
-                  }}
-                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-                >
-                  Pagar con Stripe - $99.90 USD
-                </button>
-              )}
-              */}
-              <p className="text-yellow-500/70 text-[10px] mt-2 text-center">✨ Ideal para negocios en crecimiento con alta rotación</p>
-            </div>
-          </div>
-          
-          <button
-            onClick={onClose}
-            className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
-          >
-            Cancelar
-          </button>
+// MODAL DE UPGRADE (PLANES ACTUALIZADOS - CON STARTER)
+// ============================================================
+const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
+      <div className="bg-[#1e293b] rounded-2xl p-6 max-w-4xl w-full border border-blue-900/30 shadow-2xl">
+        <div className="text-center mb-4">
+          <div className="text-5xl mb-3">🔒</div>
+          <h3 className="text-xl font-bold text-white">{t.upgradeTitle}</h3>
+          <p className="text-gray-400 text-sm mt-2">
+            {funcionNombre} - {t.upgradeDescription}
+          </p>
         </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          
+          {/* PLAN STARTER - NUEVO */}
+          <div className="bg-slate-800/50 p-4 rounded-xl border border-green-500/30">
+            <div className="text-center mb-3">
+              <h4 className="text-xl font-bold text-green-400">Plan Starter</h4>
+              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$29,900' : '$9.99'}<span className="text-sm text-gray-400">/mes</span></p>
+              <p className="text-xs text-green-400 mt-1">🎣 Ingreso manual</p>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-gray-300"><span className="text-green-400">✓</span> 0 escaneos OCR (ingreso manual)</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> 10 análisis IA/mes</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> 1 usuario</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> Dashboard básico</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> Alertas de riesgo</p>
+              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin escaneo de facturas</p>
+              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin reportes PDF</p>
+            </div>
+            <button
+              onClick={() => onSeleccionarPlan('starter')}
+              className="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+            >
+              Pagar {moneda.mostrarCOP ? '$29,900' : '$9.99'}
+            </button>
+          </div>
+          
+          {/* PLAN PRO - ACTUALIZADO */}
+          <div className="bg-slate-800/50 p-4 rounded-xl border border-cyan-500/30">
+            <div className="text-center mb-3">
+              <h4 className="text-xl font-bold text-cyan-400">Plan Pro</h4>
+              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$79,900' : '$29.99'}<span className="text-sm text-gray-400">/mes</span></p>
+              <p className="text-xs text-cyan-400 mt-1">🎯 Digitalización inteligente</p>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> 30 escaneos/mes</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> 1 usuario</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Dashboard financiero</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Reportes PDF básicos</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Exportar CSV</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Alertas de flujo de caja</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Módulo de inventario y producción</p>
+            </div>
+            <button
+              onClick={() => onSeleccionarPlan('pro')}
+              className="w-full mt-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+            >
+              Pagar {moneda.mostrarCOP ? '$79,900' : '$29.99'}
+            </button>
+          </div>
+          
+          {/* PLAN BUSINESS - ACTUALIZADO (120 escaneos) */}
+          <div className="bg-slate-800/50 p-4 rounded-xl border border-purple-500/30 relative">
+            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full">
+              Más popular
+            </div>
+            <div className="text-center mb-3 mt-2">
+              <h4 className="text-xl font-bold text-purple-400">Plan Business</h4>
+              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$199,900' : '$79.99'}<span className="text-sm text-gray-400">/mes</span></p>
+              <p className="text-xs text-purple-400 mt-1">💰 Auditoría de sobrecostos</p>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> 120 escaneos/mes</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> 3 usuarios</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> Todo del Pro</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> <strong>Auditoría forense de gastos</strong></p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> <strong>Detección de sobrecostos de proveedores</strong></p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> Reportes PDF avanzados</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> Punto de equilibrio y rotación de inventario</p>
+            </div>
+            <button
+              onClick={() => onSeleccionarPlan('business')}
+              className="w-full mt-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+            >
+              Pagar {moneda.mostrarCOP ? '$199,900' : '$79.99'}
+            </button>
+          </div>
+          
+          {/* PLAN ELITE - ACTUALIZADO (300 escaneos) */}
+          <div className="bg-slate-800/50 p-4 rounded-xl border border-yellow-500/30">
+            <div className="text-center mb-3">
+              <h4 className="text-xl font-bold text-yellow-400">Plan Elite</h4>
+              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$499,900' : '$199.99'}<span className="text-sm text-gray-400">/mes</span></p>
+              <p className="text-xs text-yellow-400 mt-1">🛡️ Radar de quiebra</p>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 300 escaneos/mes</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 10 usuarios</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Todo del Business</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Radar de quiebra (90 días)</strong></p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Alertas predictivas por WhatsApp</strong></p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Certificación de Salud Financiera (QR)</strong></p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Soporte prioritario (4h)</p>
+            </div>
+            <button
+              onClick={() => onSeleccionarPlan('elite')}
+              className="w-full mt-4 bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
+            >
+              Pagar {moneda.mostrarCOP ? '$499,900' : '$199.99'}
+            </button>
+          </div>
+        </div>
+        
+        <button
+          onClick={onClose}
+          className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
+        >
+          Cancelar
+        </button>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   // ============================================================
   // MODAL DE FECHA DE VENCIMIENTO
@@ -3049,35 +3300,44 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   // ANÁLISIS DE SALUD FINANCIERA
   // ============================================================
   const analisisSalud = useMemo(() => {
-    if (movimientos.length === 0) return null;
-    const movimientosFormateados = movimientos.map(m => ({
-      ...m,
-      tipo: m.tipo === 'ingreso' ? 'INGRESO' : 'EGRESO',
-      valor: m.valor || 0
-    }));
-    return analizarSaludFinanciera(movimientosFormateados, inventario, {});
-  }, [movimientos, inventario]);
+  if (movimientos.length === 0) return null;
+  const movimientosFormateados = movimientos.map(m => ({
+    ...m,
+    tipo: m.tipo === 'ingreso' ? 'INGRESO' : 'EGRESO',
+    valor: m.valor || 0
+  }));
+  return analizarSaludFinanciera(movimientosFormateados, inventario, {}, idioma);
+}, [movimientos, inventario, idioma]);
 
-  // ============================================================
-  // KPIs
-  // ============================================================
-  const ventasTotales = movimientos.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
-  const gastosTotales = movimientos.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
-  const utilidadEstimada = ventasTotales - gastosTotales;
-  let margen = 0;
-  if (ventasTotales > 0) {
-    margen = parseFloat(((utilidadEstimada / ventasTotales) * 100).toFixed(1));
-  }
-  const saldoCaja = movimientos.reduce((sum, m) => {
-    if (m.tipo === 'ingreso') return sum + m.valor;
-    return sum - m.valor;
-  }, 0);
+// ============================================================
+// KPIs
+// ============================================================
+const ventasTotales = movimientos.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
+const gastosTotales = movimientos.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
+const utilidadEstimada = ventasTotales - gastosTotales;
+let margen = 0;
+if (ventasTotales > 0) {
+  margen = parseFloat(((utilidadEstimada / ventasTotales) * 100).toFixed(1));
+}
+const saldoCaja = movimientos.reduce((sum, m) => {
+  if (m.tipo === 'ingreso') return sum + m.valor;
+  return sum - m.valor;
+}, 0);
+
+// ✅ NUEVAS MÉTRICAS PARA EL GRÁFICO
+const comprasTotales = movimientos
+  .filter(m => m.tipo === 'egreso' && m.categoria === 'INVENTARIO')
+  .reduce((sum, m) => sum + m.valor, 0);
   
-  const datosGrafico = [
-    { nombre: t.ventas.split(' ')[0], valor: ventasTotales, color: '#10b981' },
-    { nombre: 'Gastos', valor: gastosTotales, color: '#ef4444' },
-    { nombre: t.utilidad.split(' ')[0], valor: utilidadEstimada, color: utilidadEstimada >= 0 ? '#06b6d4' : '#f97316' }
-  ];
+const capitalInyectado = usuarioActual?.aportesPersonales || 0;
+
+const datosGrafico = [
+  { nombre: 'Ventas', valor: ventasTotales, color: '#10b981' },
+  { nombre: 'Gastos', valor: gastosTotales, color: '#ef4444' },
+  { nombre: 'Compras', valor: comprasTotales, color: '#f59e0b' },
+  { nombre: 'Capital', valor: capitalInyectado, color: '#8b5cf6' },
+  { nombre: 'Utilidad', valor: utilidadEstimada, color: utilidadEstimada >= 0 ? '#06b6d4' : '#f97316' }
+];
 
   // ============================================================
   // COMPARACIÓN MES A MES
@@ -3231,7 +3491,7 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   // ============================================================
   // DETECCIÓN DE ANOMALÍAS
   // ============================================================
-  const detectarAnomaliasProductos = useCallback(() => {
+   const detectarAnomaliasProductos = useCallback(() => {
     if (!usuarioActual?.uid) return [];
     if (!puedeAccederAFuncion('puedeVerAnomalias')) return [];
     
@@ -3313,6 +3573,37 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
   }, [movimientos, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
 
   const anomaliasProductos = detectarAnomaliasProductos();
+
+  // ============================================================
+  // 🚀 NUEVO: AUDITORÍA DE SOBRECOSTOS DE PROVEEDORES (Business/Elite)
+  // ============================================================
+  const [sobrecostosProveedores, setSobrecostosProveedores] = useState([]);
+  const [ahorroPotencial, setAhorroPotencial] = useState(0);
+
+  // Efecto para detectar sobrecostos cuando cambian movimientos o plan
+  useEffect(() => {
+    if (!usuarioActual?.uid) return;
+    
+    // Solo ejecutar para Business y Elite
+    if (usuarioActual.plan !== 'business' && usuarioActual.plan !== 'elite') {
+      setSobrecostosProveedores([]);
+      setAhorroPotencial(0);
+      return;
+    }
+    
+    // Verificar que la función esté disponible (desde logicEngine)
+    if (typeof auditarSobrecostosProveedores !== 'function') return;
+    
+    const resultado = auditarSobrecostosProveedores(movimientos, inventario, usuarioActual.plan, idioma);
+    setSobrecostosProveedores(resultado.sobrecostos || []);
+    setAhorroPotencial(resultado.ahorroPotencial || 0);
+    
+    // Si hay sobrecostos, mostrar mensaje de validación
+    if (resultado.sobrecostos && resultado.sobrecostos.length > 0) {
+      setValidationMessage(resultado.mensajeResumen);
+      setTimeout(() => setValidationMessage(null), 8000);
+    }
+  }, [movimientos, inventario, usuarioActual?.plan, usuarioActual?.uid, idioma]);
 
   // ============================================================
   // MANEJAR GUARDADO CON VENCIMIENTO
@@ -3458,26 +3749,33 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
             </div>
             
             <button
-              onClick={() => {
-                if (puedeAccederAFuncion('puedeGenerarPDF')) {
-                  generarReportePDF(false);
-                } else {
-                  setFuncionBloqueada('Reportes PDF');
-                  setModalUpgradeOpen(true);
-                }
-              }}
-              disabled={generandoReporte || movimientos.length === 0}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
-                !puedeAccederAFuncion('puedeGenerarPDF')
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                  : generandoReporte || movimientos.length === 0
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
-              }`}
-            >
-              <span>📊</span>
-              <span className="hidden sm:inline">{generandoReporte ? t.generando : t.reporte}</span>
-            </button>
+  onClick={() => {
+    if (puedeAccederAFuncion('puedeGenerarPDF')) {
+      generarReportePDF(false);  // Versión completa para planes de pago
+    } else {
+      generarReportePreview();   // Versión corta para plan Free/Starter
+    }
+  }}
+  disabled={generandoReporte || movimientos.length === 0}
+  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
+    !puedeAccederAFuncion('puedeGenerarPDF')
+      ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+      : generandoReporte || movimientos.length === 0
+      ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+      : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
+  }`}
+>
+  <span>📊</span>
+  <span className="hidden sm:inline">{generandoReporte ? t.generando : t.reporte}</span>
+</button>
+
+<button
+  onClick={() => setMostrarConfigModal(true)}
+  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 transition-all duration-300"
+>
+  <span>⚙️</span>
+  <span className="hidden sm:inline">Auditoría</span>
+</button>
 
             {/* Botón exportar CSV */}
             <button
@@ -3538,609 +3836,570 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
         </div>
       </header>
 
+<Toaster position="top-center" reverseOrder={false} />
+
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {error && (
-          <div className={`mb-6 p-4 rounded-xl text-sm ${
-            error.includes('NO RENTABLE') || error.includes('excede') || error.includes('Sargento Financiero') || error.includes('OPERACIÓN BLOQUEADA')
-              ? 'bg-red-900/50 border border-red-500/50 text-red-300'
-              : 'bg-red-900/20 border border-red-500/30 text-red-400'
-          }`}>
-            {error}
-          </div>
-        )}
-        
-        {validationMessage && (
-          <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl text-yellow-400 text-sm">
-            {validationMessage}
-          </div>
-        )}
-
-        {/* Alertas de valores atípicos */}
-        {puedeAccederAFuncion('puedeVerAnomalias') && valoresAtipicos.length > 0 && (
-          <div className="mb-6 p-4 bg-orange-900/30 border border-orange-500/50 rounded-xl">
-            <h4 className="text-orange-400 font-bold mb-2">{t.alertaValorAtipico}</h4>
-            {valoresAtipicos.slice(0, 3).map((atipico, idx) => (
-              <div key={idx} className="text-sm text-orange-200 mb-1">
-                {atipico.concepto}: {formatearValor(atipico.valor)} - {t.alertaValorAtipicoDesc}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Alerta de inconsistencia de saldo */}
-        {inconsistenciaSaldo?.inconsistente && (
-          <div className="mb-6 p-4 bg-red-900/30 border border-red-500/50 rounded-xl">
-            <h4 className="text-red-400 font-bold mb-2">{t.alertaInconsistenciaSaldo}</h4>
-            <p className="text-sm text-red-200">{t.alertaInconsistenciaSaldoDesc}</p>
-            <p className="text-xs text-red-300 mt-2">Diferencia: {formatearValor(inconsistenciaSaldo.diferencia)}</p>
-          </div>
-        )}
-
-        {/* Modal de logs de eliminaciones */}
-        {mostrarLogsEliminaciones && (
-          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4" onClick={() => setMostrarLogsEliminaciones(false)}>
-            <div className="bg-[#1e293b] rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white">{t.verLogsEliminaciones}</h3>
-                <button onClick={() => setMostrarLogsEliminaciones(false)} className="text-gray-400 hover:text-white text-2xl">&times;</button>
-              </div>
-              {logsEliminaciones.length === 0 ? (
-                <p className="text-gray-400 text-center py-8">No hay registros de eliminaciones</p>
-              ) : (
-                <div className="space-y-3">
-                  {logsEliminaciones.map((log) => (
-                    <div key={log.id} className="bg-slate-800/50 p-3 rounded-lg">
-                      <p className="text-red-400 text-sm font-bold">Eliminado: {log.concepto}</p>
-                      <p className="text-gray-400 text-xs">Valor: {formatearValor(log.valor)}</p>
-                      <p className="text-gray-500 text-xs">Fecha original: {log.fechaRegistroOriginal ? new Date(log.fechaRegistroOriginal).toLocaleDateString('es-CO') : 'N/A'}</p>
-                      <p className="text-gray-500 text-xs">Eliminado por: {log.userEmail}</p>
-                      <p className="text-gray-500 text-xs">Fecha eliminación: {log.fechaEliminacion?.toDate ? new Date(log.fechaEliminacion.toDate()).toLocaleString('es-CO') : 'N/A'}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center">
-                  <p className="text-gray-400 text-sm font-medium">{t.ventas}</p>
-                  <TooltipIcon text={t.tooltipVentas} />
-                </div>
-                <p className="text-2xl font-bold mt-1 text-emerald-400">{formatearValor(ventasTotales)}</p>
-                {puedeAccederAFuncion('puedeVerComparacionMensual') && variaciones && (
-                  <p className={`text-xs mt-1 ${variaciones.ventas.variacion >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {variaciones.ventas.variacion >= 0 ? '↑' : '↓'} {Math.abs(variaciones.ventas.variacion).toFixed(1)}% {t.variacionVentas}
-                  </p>
-                )}
-                {!puedeAccederAFuncion('puedeVerComparacionMensual') && (
-                  <p className="text-xs mt-1 text-gray-500 cursor-pointer hover:text-cyan-400" onClick={() => { setFuncionBloqueada('Comparación mensual'); setModalUpgradeOpen(true); }}>
-                    🔒 Actualiza para ver comparación
-                  </p>
-                )}
-              </div>
-              <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">💰</div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Período actual</span>
-              <span className="text-xs font-medium text-emerald-400">+12%</span>
-            </div>
-          </div>
-          
-          <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center">
-                  <p className="text-gray-400 text-sm font-medium">{t.utilidad}</p>
-                  <TooltipIcon text={t.tooltipUtilidad} />
-                </div>
-                <p className={`text-2xl font-bold mt-1 ${utilidadEstimada >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatearValor(utilidadEstimada)}</p>
-                {puedeAccederAFuncion('puedeVerComparacionMensual') && variaciones && (
-                  <p className={`text-xs mt-1 ${variaciones.utilidad.variacion >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {variaciones.utilidad.variacion >= 0 ? '↑' : '↓'} {Math.abs(variaciones.utilidad.variacion).toFixed(1)}% {t.variacionVentas}
-                  </p>
-                )}
-              </div>
-              <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">📈</div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Neto del período</span>
-              <span className={`text-xs font-medium ${utilidadEstimada >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{utilidadEstimada >= 0 ? '+' : '-'}{Math.abs(utilidadEstimada / ventasTotales * 100).toFixed(1)}%</span>
-            </div>
-          </div>
-          
-          <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center">
-                  <p className="text-gray-400 text-sm font-medium">{t.margen}</p>
-                  <TooltipIcon text={t.tooltipMargen} />
-                </div>
-                <p className="text-2xl font-bold mt-1 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">{margen}%</p>
-              </div>
-              <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">📊</div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Sobre ventas</span>
-              <span className="text-xs font-medium text-cyan-400">+2.1pp</span>
-            </div>
-          </div>
-
-          <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center">
-                  <p className="text-gray-400 text-sm font-medium">{t.saldo}</p>
-                  <TooltipIcon text={t.tooltipSaldo} />
-                </div>
-                <p className={`text-2xl font-bold mt-1 ${saldoCaja >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatearValor(saldoCaja)}</p>
-              </div>
-              <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">💵</div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
-              <span className="text-xs text-gray-500">Saldo histórico</span>
-              <span className={`text-xs font-medium ${saldoCaja >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{saldoCaja >= 0 ? 'Positivo' : 'Negativo'}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* SECCIÓN MI PLAN */}
-        <div className={`bg-gradient-to-r rounded-2xl p-6 mb-8 border ${
-          usuarioActual?.plan === 'elite' 
-            ? 'from-yellow-900/30 to-orange-900/30 border-yellow-500/30' 
-            : usuarioActual?.plan === 'business'
-            ? 'from-purple-900/30 to-blue-900/30 border-purple-500/30'
-            : 'from-blue-900/30 to-purple-900/30 border-blue-500/30'
-        }`}>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>{usuarioActual?.plan === 'elite' ? '👑' : '🎯'}</span> Mi Plan Actual
-              </h3>
-              <p className="text-gray-400 text-sm mt-1">Gestiona tu suscripción y consulta los beneficios</p>
-            </div>
-            <button
-              onClick={() => {
-                setFuncionBloqueada('Ver planes');
-                setModalUpgradeOpen(true);
-              }}
-              className="px-6 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-lg text-cyan-400 font-medium transition-all"
-            >
-              Cambiar Plan
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-            <div className={`rounded-xl p-4 ${
-              usuarioActual?.plan === 'elite' ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-slate-800/50'
-            }`}>
-              <p className="text-gray-400 text-xs uppercase mb-1">Plan Activo</p>
-              <p className="text-xl font-bold text-white">
-                {usuarioActual?.plan === 'gratis' ? 'Starter' :
-                 usuarioActual?.plan === 'pro' ? 'Plan 1' :
-                 usuarioActual?.plan === 'business' ? 'Plan 2' : 'Plan 3'}
-              </p>
-              <p className={`text-sm mt-1 ${
-                usuarioActual?.plan === 'elite' ? 'text-yellow-400' : 'text-cyan-400'
+        {usuarioActual?.suscripcionActiva === true || usuarioActual?.plan === 'gratis' || usuarioActual?.plan === 'starter' ? (
+          <>
+            {/* CONTENIDO ORIGINAL COMPLETO DEL DASHBOARD */}
+            
+            {error && (
+              <div className={`mb-6 p-4 rounded-xl text-sm ${
+                error.includes('NO RENTABLE') || error.includes('excede') || error.includes('Sargento Financiero') || error.includes('OPERACIÓN BLOQUEADA')
+                  ? 'bg-red-900/50 border border-red-500/50 text-red-300'
+                  : 'bg-red-900/20 border border-red-500/30 text-red-400'
               }`}>
-                {moneda.mostrarCOP ? 
-                  (usuarioActual?.plan === 'gratis' ? '$0' :
-                   usuarioActual?.plan === 'pro' ? '$59,900/mes' :
-                   usuarioActual?.plan === 'business' ? '$99,900/mes' : '$199,900/mes') :
-                  (usuarioActual?.plan === 'gratis' ? '$0' :
-                   usuarioActual?.plan === 'pro' ? '$19.99/mes' :
-                   usuarioActual?.plan === 'business' ? '$49.99/mes' : '$99.90/mes')
-                }
-              </p>
-            </div>
+                {error}
+              </div>
+            )}
             
-            <div className={`rounded-xl p-4 ${
-              usuarioActual?.plan === 'elite' ? 'bg-yellow-500/10' : 'bg-slate-800/50'
-            }`}>
-              <p className="text-gray-400 text-xs uppercase mb-1">Escaneos</p>
-              <p className="text-xl font-bold text-white">
-                {usuarioActual?.plan === 'elite' 
-                  ? `${(usuarioActual?.creditosOCR || 500) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 500}`
-                  : `${(usuarioActual?.creditosOCR || 0) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 0}`}
-              </p>
-              <p className="text-gray-400 text-sm mt-1">usados este mes</p>
-            </div>
-            
-            <div className="bg-slate-800/50 rounded-xl p-4">
-              <p className="text-gray-400 text-xs uppercase mb-1">Tiempo Restante</p>
-              <p className="text-xl font-bold text-white">
-                {(() => {
-                  if (!usuarioActual?.fechaVencimiento) return 'Ilimitado';
-                  const fechaVenc = usuarioActual.fechaVencimiento?.toDate ? 
-                    usuarioActual.fechaVencimiento.toDate() : new Date(usuarioActual.fechaVencimiento);
-                  const diasRestantes = Math.ceil((fechaVenc - new Date()) / (1000 * 60 * 60 * 24));
-                  if (diasRestantes <= 0) return 'Vencido';
-                  if (usuarioActual.plan === 'gratis' && diasRestantes > 15) return '15 días';
-                  return `${diasRestantes} días`;
-                })()}
-              </p>
-              <p className="text-gray-400 text-sm mt-1">
-                {usuarioActual?.plan === 'gratis' ? 'período de prueba' : 'hasta renovación'}
-              </p>
-            </div>
-            
-            <div className={`rounded-xl p-4 ${
-              usuarioActual?.plan === 'elite' ? 'bg-yellow-500/10' : 'bg-slate-800/50'
-            }`}>
-              <p className="text-gray-400 text-xs uppercase mb-1">Beneficios</p>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {(usuarioActual?.plan === 'gratis' || usuarioActual?.plan === 'starter') && (
-                  <>
-                    <span className="text-xs bg-gray-700 px-2 py-0.5 rounded-full">📷 3 escaneos</span>
-                    <span className="text-xs bg-gray-700 px-2 py-0.5 rounded-full">📊 Básico</span>
-                  </>
-                )}
-                {usuarioActual?.plan === 'pro' && (
-                  <>
-                    <span className="text-xs bg-cyan-500/20 px-2 py-0.5 rounded-full">📷 30 escaneos</span>
-                    <span className="text-xs bg-cyan-500/20 px-2 py-0.5 rounded-full">📊 Reporte PDF</span>
-                    <span className="text-xs bg-cyan-500/20 px-2 py-0.5 rounded-full">📈 Comparativas</span>
-                  </>
-                )}
-                {usuarioActual?.plan === 'business' && (
-                  <>
-                    <span className="text-xs bg-purple-500/20 px-2 py-0.5 rounded-full">📷 100 escaneos</span>
-                    <span className="text-xs bg-purple-500/20 px-2 py-0.5 rounded-full">📊 Reporte PDF</span>
-                    <span className="text-xs bg-purple-500/20 px-2 py-0.5 rounded-full">📈 Comparativas</span>
-                    <span className="text-xs bg-purple-500/20 px-2 py-0.5 rounded-full">🔒 Auditoría</span>
-                  </>
-                )}
-                {usuarioActual?.plan === 'elite' && (
-                  <>
-                    <span className="text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">📷 500 escaneos/mes</span>
-                    <span className="text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">💬 WhatsApp (alertas críticas)</span>
-                    <span className="text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">⭐ Soporte prioritario</span>
-                    <span className="text-xs bg-yellow-500/20 px-2 py-0.5 rounded-full">📅 Alerta vencimiento</span>
-                  </>
-                )}
+            {validationMessage && (
+              <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded-xl text-yellow-400 text-sm">
+                {validationMessage}
               </div>
-            </div>
-          </div>
-        </div>
+            )}
 
-        {/* PANEL DE ADMINISTRACIÓN */}
-        {/* <AdminPanel usuarioActual={usuarioActual} /> */}
-
-        {/* PANEL DEL SARGENTO FINANCIERO */}
-        {analisisSalud && (
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            <div className="bg-[#1e293b] p-6 rounded-2xl border border-blue-900/20 shadow-lg">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <span className="text-2xl">🌡️</span> {t.salud}
-                </h3>
-                <span
-                  className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
-                  style={{ backgroundColor: `${analisisSalud.saludColor}33`, color: analisisSalud.saludColor }}
-                >
-                  {analisisSalud.saludMensaje}
-                </span>
-              </div>
-
-              <div className="relative h-4 bg-slate-800 rounded-full overflow-hidden mb-4">
-                <div
-                  className="absolute top-0 left-0 h-full transition-all duration-1000 ease-out"
-                  style={{
-                    width: `${analisisSalud.saludPorcentaje}%`,
-                    backgroundColor: analisisSalud.saludColor,
-                    boxShadow: `0 0 20px ${analisisSalud.saludColor}66`
-                  }}
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/5">
-                  <p className="text-gray-400 text-xs uppercase mb-1">{t.oxigeno}</p>
-                  <p className={`text-2xl font-black ${analisisSalud.diasOxigeno < 15 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {analisisSalud.diasOxigeno === 999 ? '∞' : analisisSalud.diasOxigeno} <span className="text-sm font-normal">días</span>
-                  </p>
-                </div>
-                <div className="bg-slate-800/40 p-4 rounded-xl border border-white/5">
-                  <p className="text-gray-400 text-xs uppercase mb-1">Margen Neto</p>
-                  <p className="text-2xl font-black text-blue-400">
-                    {analisisSalud.margenNeto}%
-                  </p>
-                </div>
-              </div>
-              
-              {puedeAccederAFuncion('puedeVerPuntoEquilibrio') && puntoEquilibrio && puntoEquilibrio.puntoEquilibrio > 0 && (
-                <div className="mt-4 pt-4 border-t border-blue-900/20">
-                  <div className="bg-slate-800/40 p-3 rounded-xl">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-gray-400 text-xs uppercase">{t.puntoEquilibrio}</p>
-                      <TooltipIcon text={t.puntoEquilibrioDesc} />
-                    </div>
-                    <p className="text-lg font-bold text-cyan-400">
-                      {formatearValor(puntoEquilibrio.puntoEquilibrio)}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Ventas actuales: {formatearValor(puntoEquilibrio.ventasActuales)}
-                    </p>
-                    {puntoEquilibrio.estaDebajo && (
-                      <p className="text-xs text-red-400 mt-2 font-medium">
-                        {t.alertaPuntoEquilibrio}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-              
-              {puedeAccederAFuncion('puedeVerRotacionInventario') && rotacionInventario && rotacionInventario.tieneDatos && (
-                <div className="mt-4 pt-4 border-t border-blue-900/20">
-                  <div className="bg-slate-800/40 p-3 rounded-xl">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-gray-400 text-xs uppercase">Rotación de Inventario</p>
-                      <TooltipIcon text="Días que tarda en venderse el inventario promedio. A menor número, mejor rotación." />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <div>
-                        <p className="text-xs text-gray-500">Rotación (veces/mes)</p>
-                        <p className="text-lg font-bold text-cyan-400">{rotacionInventario.rotacion}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Días de inventario</p>
-                        <p className={`text-lg font-bold ${rotacionInventario.diasInventario > 30 ? 'text-orange-400' : 'text-emerald-400'}`}>
-                          {rotacionInventario.diasInventario} días
-                        </p>
-                      </div>
-                    </div>
-                    {rotacionInventario.diasInventario > 30 && (
-                      <p className="text-xs text-orange-400 mt-2">
-                        ⚠️ Inventario lento. Reduce compras de productos con baja rotación.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-[#1e293b] p-6 rounded-2xl border border-blue-900/20 shadow-lg">
-              <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                <span className="text-2xl">🚨</span> {t.alertas}
-              </h3>
-              
-              <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                {puedeAccederAFuncion('puedeVerPuntoEquilibrio') && puntoEquilibrio && puntoEquilibrio.estaDebajo && (
-                  <div className="p-4 rounded-xl border-l-4 bg-orange-500/10 border-orange-500 text-orange-200">
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">⚖️</span>
-                      <div>
-                        <p className="text-sm font-bold">Por debajo del punto de equilibrio</p>
-                        <p className="text-xs">Necesitas vender {formatearValor(puntoEquilibrio.puntoEquilibrio - puntoEquilibrio.ventasActuales)} adicionales para cubrir costos fijos.</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {puedeAccederAFuncion('puedeVerAnomalias') && anomaliasProductos && anomaliasProductos.length > 0 && anomaliasProductos.map((anomalia, idx) => (
-                  <div key={`anomalia-${idx}`} className="p-4 rounded-xl border-l-4 bg-red-500/10 border-red-500 text-red-200">
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">📉</span>
-                      <div>
-                        <p className="text-sm font-bold">Margen en caída: {anomalia.producto}</p>
-                        <p className="text-xs">El margen bajó de {anomalia.margenAnterior}% a {anomalia.margenActual}% (caída de {anomalia.caida}%). Revisa costos o precio de venta.</p>
-                      </div>
-                    </div>
+            {/* Alertas de valores atípicos */}
+            {puedeAccederAFuncion('puedeVerAnomalias') && valoresAtipicos.length > 0 && (
+              <div className="mb-6 p-4 bg-orange-900/30 border border-orange-500/50 rounded-xl">
+                <h4 className="text-orange-400 font-bold mb-2">{t.alertaValorAtipico}</h4>
+                {valoresAtipicos.slice(0, 3).map((atipico, idx) => (
+                  <div key={idx} className="text-sm text-orange-200 mb-1">
+                    {atipico.concepto}: {formatearValor(atipico.valor)} - {t.alertaValorAtipicoDesc}
                   </div>
                 ))}
-                
-                {analisisSalud.alertas?.length > 0 ? (
-                  analisisSalud.alertas.slice(0, 5).map((alerta, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-4 rounded-xl border-l-4 flex items-start gap-3 ${
-                        alerta.urgencia === 'ALTA'
-                          ? 'bg-red-500/10 border-red-500 text-red-200'
-                          : 'bg-amber-500/10 border-amber-500 text-amber-200'
-                      }`}
-                    >
-                      <span className="text-lg">
-                        {alerta.tipo === 'PRODUCTO_HUESO' ? '🦴' : '⚠️'}
-                      </span>
-                      <p className="text-sm leading-tight font-medium">{alerta.mensaje}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-gray-500 italic">
-                    No hay alertas críticas. El negocio fluye según lo planeado.
-                  </div>
-                )}
-
-                {analisisSalud.alertaQuiebra && (
-                  <div className="p-4 rounded-xl border-l-4 bg-red-900/30 border-red-600 text-red-100 animate-pulse">
-                    <p className="font-bold mb-1">🔥 {analisisSalud.alertaQuiebra.tipo}</p>
-                    <p className="text-xs">{analisisSalud.alertaQuiebra.mensaje}</p>
-                    <p className="text-xs mt-2 font-black uppercase italic">Acción: {analisisSalud.alertaQuiebra.recomendacion}</p>
-                  </div>
-                )}
               </div>
-            </div>
-          </section>
-        )}
+            )}
 
-        {/* Recomendaciones Estratégicas */}
-        {analisisSalud && analisisSalud.recomendaciones?.length > 0 && (
-          <section className="mb-12 bg-blue-600/10 border border-blue-500/30 p-6 rounded-2xl">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-300">
-              <span className="text-xl">💡</span> {t.recomendaciones}
-            </h3>
-            <div className="flex flex-wrap gap-3">
-              {analisisSalud.recomendaciones.slice(0, 5).map((rec, idx) => (
-                <div key={idx} className="bg-slate-900/80 px-4 py-2 rounded-lg border border-blue-400/20 text-sm text-blue-100 flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-blue-400 rounded-full shadow-[0_0_8px_#60a5fa]" />
-                  {rec}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* GRÁFICOS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <span>📊</span> {t.ingresosVsEgresos}
-            </h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={datosGrafico} layout="vertical" margin={{ left: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis type="number" tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} stroke="#94a3b8" />
-                <YAxis dataKey="nombre" type="category" stroke="#94a3b8" width={60} />
-                <Tooltip
-                  formatter={(v) => `$${v.toLocaleString()}`}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#38bdf8', borderRadius: '8px' }}
-                />
-                <Bar dataKey="valor" radius={[0, 4, 4, 0]}>
-                  {datosGrafico.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="mt-3 flex justify-center gap-4 text-xs">
-              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-500"></div><span>{t.ventas.split(' ')[0]}</span></div>
-              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>Gastos</span></div>
-              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-cyan-500"></div><span>{t.utilidad.split(' ')[0]}</span></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Módulo de Producción y Dictamen */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">🏭 {t.produccion}</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-gray-400 text-sm mb-1">{t.productoNombre}</label>
-                  <input type="text" value={produccion.productoNombre} onChange={(e) => setProduccion({...produccion, productoNombre: e.target.value})} placeholder="Ej: Camisa Manga Larga" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                </div>
-                <div><label className="block text-gray-400 text-sm mb-1">{t.material}</label><input type="number" value={produccion.materiales} onChange={(e) => setProduccion({...produccion, materiales: e.target.value})} placeholder="0" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
-                <div><label className="block text-gray-400 text-sm mb-1">{t.horas}</label><input type="number" value={produccion.horas} onChange={(e) => setProduccion({...produccion, horas: e.target.value})} placeholder="0" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
-                <div><label className="block text-gray-400 text-sm mb-1">{t.valorHora}</label><input type="number" value={produccion.valorHora} onChange={(e) => setProduccion({...produccion, valorHora: e.target.value})} placeholder="0" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
-                <div><label className="block text-gray-400 text-sm mb-1">{t.transporte}</label><input type="number" value={produccion.transporte} onChange={(e) => setProduccion({...produccion, transporte: e.target.value})} placeholder="0" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
-                <div><label className="block text-gray-400 text-sm mb-1">{t.precioVenta}</label><input type="number" value={produccion.precioVenta} onChange={(e) => setProduccion({...produccion, precioVenta: e.target.value})} placeholder="Validar rentabilidad" className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500" /></div>
+            {/* Alerta de inconsistencia de saldo */}
+            {inconsistenciaSaldo?.inconsistente && (
+              <div className="mb-6 p-4 bg-red-900/30 border border-red-500/50 rounded-xl">
+                <h4 className="text-red-400 font-bold mb-2">{t.alertaInconsistenciaSaldo}</h4>
+                <p className="text-sm text-red-200">{t.alertaInconsistenciaSaldoDesc}</p>
+                <p className="text-xs text-red-300 mt-2">Diferencia: {formatearValor(inconsistenciaSaldo.diferencia)}</p>
               </div>
-              {calculandoProduccion && <p className="text-cyan-400 text-sm text-center">{t.calcular}</p>}
-              {costeoResultado && (
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-blue-900/20">
-                  <div><p className="text-gray-400 text-sm">{t.costoUnitario}</p><p className="text-2xl font-bold text-cyan-400">{formatearValor(costeoResultado.costoUnitario)}</p>{costeoResultado.costoMateriales > 0 && <p className="text-xs text-gray-500">{t.material}: {formatearValor(costeoResultado.costoMateriales)}</p>}{costeoResultado.costoManoObra > 0 && <p className="text-xs text-gray-500">{t.horas}: {formatearValor(costeoResultado.costoManoObra)}</p>}</div>
-                  <div><p className="text-gray-400 text-sm">{t.precioSugerido}</p><p className="text-2xl font-bold text-emerald-400">{formatearValor(costeoResultado.costoUnitario * 1.3)}</p></div>
-                </div>
-              )}
-              
-              {costeoResultado && produccion.productoNombre && (
-                <div className="mt-4">
-                  {!esProduccionRentable() && produccion.precioVenta && (
-                    <div className="mb-3 p-3 bg-red-900/30 border border-red-500/50 rounded-lg text-red-300 text-sm text-center">
-                      {t.alertaProduccion}
+            )}
+
+            {/* Modal de logs de eliminaciones */}
+            {mostrarLogsEliminaciones && (
+              <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4" onClick={() => setMostrarLogsEliminaciones(false)}>
+                <div className="bg-[#1e293b] rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">{t.verLogsEliminaciones}</h3>
+                    <button onClick={() => setMostrarLogsEliminaciones(false)} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+                  </div>
+                  {logsEliminaciones.length === 0 ? (
+                    <p className="text-gray-400 text-center py-8">No hay registros de eliminaciones</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {logsEliminaciones.map((log) => (
+                        <div key={log.id} className="bg-slate-800/50 p-3 rounded-lg">
+                          <p className="text-red-400 text-sm font-bold">Eliminado: {log.concepto}</p>
+                          <p className="text-gray-400 text-xs">Valor: {formatearValor(log.valor)}</p>
+                          <p className="text-gray-500 text-xs">Fecha original: {log.fechaRegistroOriginal ? new Date(log.fechaRegistroOriginal).toLocaleDateString('es-CO') : 'N/A'}</p>
+                          <p className="text-gray-500 text-xs">Eliminado por: {log.userEmail}</p>
+                          <p className="text-gray-500 text-xs">Fecha eliminación: {log.fechaEliminacion?.toDate ? new Date(log.fechaEliminacion.toDate()).toLocaleString('es-CO') : 'N/A'}</p>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  <button
-                    onClick={cargarAInventario}
-                    disabled={cargandoInventario || !esProduccionRentable()}
-                    className={`w-full py-3 rounded-lg font-bold transition-all duration-300 ${
-                      cargandoInventario || !esProduccionRentable()
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-500/25'
-                    }`}
-                  >
-                    {cargandoInventario ? t.calcular : t.cargarInventario}
-                  </button>
+                </div>
+              </div>
+            )}
+
+                        {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+              <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center">
+                      <p className="text-gray-400 text-sm font-medium">{t.ventas}</p>
+                      <TooltipIcon text={t.tooltipVentas} />
+                    </div>
+                    <p className="text-2xl font-bold mt-1 text-emerald-400">{formatearValor(ventasTotales)}</p>
+                    {puedeAccederAFuncion('puedeVerComparacionMensual') && variaciones && (
+                      <p className={`text-xs mt-1 ${variaciones.ventas.variacion >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {variaciones.ventas.variacion >= 0 ? '↑' : '↓'} {Math.abs(variaciones.ventas.variacion).toFixed(1)}% {t.variacionVentas}
+                      </p>
+                    )}
+                    {!puedeAccederAFuncion('puedeVerComparacionMensual') && (
+                      <p className="text-xs mt-1 text-gray-500 cursor-pointer hover:text-cyan-400" onClick={() => { setFuncionBloqueada('Comparación mensual'); setModalUpgradeOpen(true); }}>
+                        🔒 Actualiza para ver comparación
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">💰</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Período actual</span>
+                  <span className="text-xs font-medium text-emerald-400">+12%</span>
+                </div>
+              </div>
+              
+              <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center">
+                      <p className="text-gray-400 text-sm font-medium">{t.utilidad}</p>
+                      <TooltipIcon text={t.tooltipUtilidad} />
+                    </div>
+                    <p className={`text-2xl font-bold mt-1 ${utilidadEstimada >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatearValor(utilidadEstimada)}</p>
+                    {puedeAccederAFuncion('puedeVerComparacionMensual') && variaciones && (
+                      <p className={`text-xs mt-1 ${variaciones.utilidad.variacion >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {variaciones.utilidad.variacion >= 0 ? '↑' : '↓'} {Math.abs(variaciones.utilidad.variacion).toFixed(1)}% {t.variacionVentas}
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">📈</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Neto del período</span>
+                  <span className={`text-xs font-medium ${utilidadEstimada >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{utilidadEstimada >= 0 ? '+' : '-'}{Math.abs(utilidadEstimada / ventasTotales * 100).toFixed(1)}%</span>
+                </div>
+              </div>
+              
+              <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center">
+                      <p className="text-gray-400 text-sm font-medium">{t.margen}</p>
+                      <TooltipIcon text={t.tooltipMargen} />
+                    </div>
+                    <p className="text-2xl font-bold mt-1 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400">{margen}%</p>
+                  </div>
+                  <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">📊</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Sobre ventas</span>
+                  <span className="text-xs font-medium text-cyan-400">+2.1pp</span>
+                </div>
+              </div>
+
+              <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center">
+                      <p className="text-gray-400 text-sm font-medium">{t.saldo}</p>
+                      <TooltipIcon text={t.tooltipSaldo} />
+                    </div>
+                    <p className={`text-2xl font-bold mt-1 ${saldoCaja >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{formatearValor(saldoCaja)}</p>
+                  </div>
+                  <div className="bg-cyan-500/10 text-cyan-400 rounded-full w-8 h-8 flex items-center justify-center font-bold">💵</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-blue-900/20 flex justify-between items-center">
+                  <span className="text-xs text-gray-500">Saldo histórico</span>
+                  <span className={`text-xs font-medium ${saldoCaja >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{saldoCaja >= 0 ? 'Positivo' : 'Negativo'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* SECCIÓN CONFIGURACIÓN DE AUDITORÍA */}
+            <ConfiguracionAuditoria usuarioActual={usuarioActual} idioma={idioma} />
+
+            {/* Capital Inyectado (Deuda) */}
+            <div className="bg-slate-800/50 rounded-xl p-4 mb-8">
+              <p className="text-gray-400 text-xs uppercase mb-1">Capital Inyectado (Deuda)</p>
+              <p className={`text-xl font-bold ${(usuarioActual?.deudaConDueño || 0) > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+                {formatearValor(usuarioActual?.deudaConDueño || 0)}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">El negocio te debe esto</p>
+            </div>
+
+            {/* PANEL DE ADMINISTRACIÓN */}
+            {/* <AdminPanel usuarioActual={usuarioActual} /> */}
+
+            {/* PANEL DEL SARGENTO FINANCIERO */}
+            {analisisSalud && (
+              <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                <div className="bg-[#1e293b] p-6 rounded-2xl border border-blue-900/20 shadow-lg">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold flex items-center gap-2">
+                      <span className="text-2xl">🌡️</span> {t.salud}
+                    </h3>
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
+                      style={{ backgroundColor: `${analisisSalud.saludColor}33`, color: analisisSalud.saludColor }}
+                    >
+                      {analisisSalud.saludMensaje}
+                    </span>
+                  </div>
+
+                  <div className="relative h-4 bg-slate-800 rounded-full overflow-hidden mb-4">
+                    <div
+                      className="absolute top-0 left-0 h-full transition-all duration-1000 ease-out"
+                      style={{
+                        width: `${analisisSalud.saludPorcentaje}%`,
+                        backgroundColor: analisisSalud.saludColor,
+                        boxShadow: `0 0 20px ${analisisSalud.saludColor}66`
+                      }}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="bg-slate-800/40 p-4 rounded-xl border border-white/5">
+                      <p className="text-gray-400 text-xs uppercase mb-1">{t.oxigeno}</p>
+                      <p className={`text-2xl font-black ${analisisSalud.diasOxigeno < 15 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {analisisSalud.diasOxigeno === 999 ? '∞' : analisisSalud.diasOxigeno} <span className="text-sm font-normal">días</span>
+                      </p>
+                    </div>
+                    <div className="bg-slate-800/40 p-4 rounded-xl border border-white/5">
+                      <p className="text-gray-400 text-xs uppercase mb-1">Margen Neto</p>
+                      <p className="text-2xl font-black text-blue-400">
+                        {analisisSalud.margenNeto}%
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {puedeAccederAFuncion('puedeVerPuntoEquilibrio') && puntoEquilibrio && puntoEquilibrio.puntoEquilibrio > 0 && (
+                    <div className="mt-4 pt-4 border-t border-blue-900/20">
+                      <div className="bg-slate-800/40 p-3 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-gray-400 text-xs uppercase">{t.puntoEquilibrio}</p>
+                          <TooltipIcon text={t.puntoEquilibrioDesc} />
+                        </div>
+                        <p className="text-lg font-bold text-cyan-400">
+                          {formatearValor(puntoEquilibrio.puntoEquilibrio)}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Ventas actuales: {formatearValor(puntoEquilibrio.ventasActuales)}
+                        </p>
+                        {puntoEquilibrio.estaDebajo && (
+                          <p className="text-xs text-red-400 mt-2 font-medium">
+                            {t.alertaPuntoEquilibrio}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {puedeAccederAFuncion('puedeVerRotacionInventario') && rotacionInventario && rotacionInventario.tieneDatos && (
+                    <div className="mt-4 pt-4 border-t border-blue-900/20">
+                      <div className="bg-slate-800/40 p-3 rounded-xl">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-gray-400 text-xs uppercase">Rotación de Inventario</p>
+                          <TooltipIcon text="Días que tarda en venderse el inventario promedio. A menor número, mejor rotación." />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <p className="text-xs text-gray-500">Rotación (veces/mes)</p>
+                            <p className="text-lg font-bold text-cyan-400">{rotacionInventario.rotacion}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Días de inventario</p>
+                            <p className={`text-lg font-bold ${rotacionInventario.diasInventario > 30 ? 'text-orange-400' : 'text-emerald-400'}`}>
+                              {rotacionInventario.diasInventario} días
+                            </p>
+                          </div>
+                        </div>
+                        {rotacionInventario.diasInventario > 30 && (
+                          <p className="text-xs text-orange-400 mt-2">
+                            ⚠️ Inventario lento. Reduce compras de productos con baja rotación.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-[#1e293b] p-6 rounded-2xl border border-blue-900/20 shadow-lg">
+                  <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                    <span className="text-2xl">🚨</span> {t.alertas}
+                  </h3>
+                  
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                    
+                    {/* 🚀 NUEVO: ALERTAS DE SOBRECOSTOS DE PROVEEDORES (Business/Elite) */}
+                    {(usuarioActual?.plan === 'business' || usuarioActual?.plan === 'elite') && sobrecostosProveedores.length > 0 && (
+                      <div className="mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded-xl">
+                        <h4 className="text-red-400 font-bold mb-2 flex items-center gap-2">
+                          <span className="text-xl">⚠️</span> 
+                          {idioma === 'es' ? 'Sobrecostos Detectados' : 'Overcosts Detected'}
+                          {ahorroPotencial > 0 && (
+                            <span className="text-xs bg-red-500/20 px-2 py-0.5 rounded-full">
+                              {idioma === 'es' ? `Ahorro potencial: ${formatearValor(ahorroPotencial)}` : `Potential savings: ${formatearValor(ahorroPotencial)}`}
+                            </span>
+                          )}
+                        </h4>
+                        {sobrecostosProveedores.slice(0, 5).map((alerta, idx) => (
+                          <div key={idx} className="text-sm text-red-200 mb-2 border-b border-red-700/50 pb-2">
+                            <p className="font-medium">{alerta.mensaje}</p>
+                            {alerta.gravedad === 'ALTA' && (
+                              <p className="text-xs text-red-300 mt-1">
+                                {idioma === 'es' ? '🔴 Revisa esta factura URGENTE' : '🔴 Check this invoice URGENTLY'}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        {sobrecostosProveedores.length > 5 && (
+                          <p className="text-xs text-red-300 mt-2">
+                            {idioma === 'es' 
+                              ? `... y ${sobrecostosProveedores.length - 5} más. Revisa el panel de auditoría.`
+                              : `... and ${sobrecostosProveedores.length - 5} more. Check the audit panel.`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    
+                    {puedeAccederAFuncion('puedeVerPuntoEquilibrio') && puntoEquilibrio && puntoEquilibrio.estaDebajo && (
+                      <div className="p-4 rounded-xl border-l-4 bg-orange-500/10 border-orange-500 text-orange-200">
+                        <div className="flex items-start gap-3">
+                          <span className="text-lg">⚖️</span>
+                          <div>
+                            <p className="text-sm font-bold">Por debajo del punto de equilibrio</p>
+                            <p className="text-xs">Necesitas vender {formatearValor(puntoEquilibrio.puntoEquilibrio - puntoEquilibrio.ventasActuales)} adicionales para cubrir costos fijos.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {puedeAccederAFuncion('puedeVerAnomalias') && anomaliasProductos && anomaliasProductos.length > 0 && anomaliasProductos.map((anomalia, idx) => (
+                      <div key={`anomalia-${idx}`} className="p-4 rounded-xl border-l-4 bg-red-500/10 border-red-500 text-red-200">
+                        <div className="flex items-start gap-3">
+                          <span className="text-lg">📉</span>
+                          <div>
+                            <p className="text-sm font-bold">Margen en caída: {anomalia.producto}</p>
+                            <p className="text-xs">El margen bajó de {anomalia.margenAnterior}% a {anomalia.margenActual}% (caída de {anomalia.caida}%). Revisa costos o precio de venta.</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {analisisSalud.alertas?.length > 0 ? (
+                      analisisSalud.alertas.slice(0, 5).map((alerta, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-4 rounded-xl border-l-4 flex items-start gap-3 ${
+                            alerta.urgencia === 'ALTA'
+                              ? 'bg-red-500/10 border-red-500 text-red-200'
+                              : 'bg-amber-500/10 border-amber-500 text-amber-200'
+                          }`}
+                        >
+                          <span className="text-lg">
+                            {alerta.tipo === 'PRODUCTO_HUESO' ? '🦴' : '⚠️'}
+                          </span>
+                          <p className="text-sm leading-tight font-medium">{alerta.mensaje}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8 text-gray-500 italic">
+                        No hay alertas críticas. El negocio fluye según lo planeado.
+                      </div>
+                    )}
+
+                    {analisisSalud.alertaQuiebra && (
+                      <div className="p-4 rounded-xl border-l-4 bg-red-900/30 border-red-600 text-red-100 animate-pulse">
+                        <p className="font-bold mb-1">🔥 {analisisSalud.alertaQuiebra.tipo}</p>
+                        <p className="text-xs">{analisisSalud.alertaQuiebra.mensaje}</p>
+                        <p className="text-xs mt-2 font-black uppercase italic">Acción: {analisisSalud.alertaQuiebra.recomendacion}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Recomendaciones Estratégicas */}
+            {analisisSalud && analisisSalud.recomendaciones?.length > 0 && (
+              <section className="mb-12 bg-blue-600/10 border border-blue-500/30 p-6 rounded-2xl">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-blue-300">
+                  <span className="text-xl">💡</span> {t.recomendaciones}
+                </h3>
+                <div className="flex flex-wrap gap-3">
+                  {analisisSalud.recomendaciones.slice(0, 5).map((rec, idx) => (
+                    <div key={idx} className="bg-slate-900/80 px-4 py-2 rounded-lg border border-blue-400/20 text-sm text-blue-100 flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-blue-400 rounded-full shadow-[0_0_8px_#60a5fa]" />
+                      {rec}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* GRÁFICOS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <span>📊</span> {t.ingresosVsEgresos}
+                </h3>
+                {datosGrafico && datosGrafico.length > 0 && (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={datosGrafico} layout="vertical" margin={{ left: 40 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                      <XAxis 
+                        type="number" 
+                        tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} 
+                        stroke="#94a3b8" 
+                      />
+                      <YAxis dataKey="nombre" type="category" stroke="#94a3b8" width={80} />
+                      <Tooltip
+                        formatter={(v) => `$${v.toLocaleString()}`}
+                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#38bdf8', borderRadius: '8px' }}
+                      />
+                      <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill="#8884d8">
+                        {datosGrafico.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+                {(!datosGrafico || datosGrafico.length === 0) && (
+                  <div className="h-[200px] flex items-center justify-center text-gray-500">
+                    No hay datos suficientes para mostrar el gráfico
+                  </div>
+                )}
+                <div className="mt-3 flex justify-center gap-4 text-xs flex-wrap">
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-500"></div><span>Ventas</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>Gastos</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500"></div><span>Compras</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span>Capital</span></div>
+                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-cyan-500"></div><span>Utilidad</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Módulo de Producción y Dictamen */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <ProduccionForm 
+                usuarioActual={usuarioActual} 
+                idioma={idioma} 
+                onSuccess={() => {
+                  setValidationMessage('✅ Producción auditada y cargada al inventario');
+                  setTimeout(() => setValidationMessage(null), 3000);
+                }}
+                onError={(error) => {
+                  setError(error.message);
+                  setTimeout(() => setError(null), 5000);
+                }}
+              />
+
+              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
+                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">📋 {t.dictamen}</h2>
+                <div className="bg-[#0f172a] rounded-xl p-4 h-64 overflow-y-auto whitespace-pre-wrap font-mono text-sm text-gray-300">
+                  {dictamenGeneral || 'Esperando datos para generar análisis...'}
+                </div>
+              </div>
+            </div>
+
+            {/* ============================================================
+                REGISTRO MANUAL Y CARGA MASIVA
+            ============================================================ */}
+            
+            {/* Registro Manual - Para TODOS los planes */}
+            <RegistroManual
+              usuarioActual={usuarioActual}
+              idioma={idioma}
+              saldoActual={saldoCaja}
+              guardarProductoEnCatalogo={guardarProductoEnCatalogo}
+              onSuccess={() => {
+                setValidationMessage(idioma === 'es' ? '✅ Movimiento registrado' : '✅ Transaction recorded');
+                setTimeout(() => setValidationMessage(null), 3000);
+              }}
+              onError={(error) => {
+                setError(error.message);
+                setTimeout(() => setError(null), 5000);
+              }}
+            />
+
+            {/* Carga Masiva - Solo para Business y Elite */}
+            {(usuarioActual?.plan === 'business' || usuarioActual?.plan === 'elite') && (
+              <MassiveUpload
+                usuarioActual={usuarioActual}
+                moneda={moneda}
+                onComplete={(results) => {
+                  const exitosos = results.filter(r => r.success).length;
+                  setValidationMessage(`✅ ${exitosos} de ${results.length} documentos procesados exitosamente`);
+                  setTimeout(() => setValidationMessage(null), 5000);
+                }}
+                onError={(error) => {
+                  setError(error.message);
+                  setTimeout(() => setError(null), 5000);
+                }}
+              />
+            )}
+
+            {/* Mensaje de ayuda */}
+            <div className="max-w-3xl mx-auto mb-8">
+              <p className="text-center text-gray-500 text-sm">
+                {idioma === 'es' 
+                  ? '💡 Puedes registrar tus movimientos manualmente arriba. Los usuarios Business y Elite también pueden subir múltiples facturas a la vez.'
+                  : '💡 You can register your transactions manually above. Business and Elite users can also upload multiple invoices at once.'}
+              </p>
+            </div>
+
+            {/* Lista de Movimientos */}
+            <section>
+              <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+                <h2 className="text-2xl font-bold text-white">{t.registros}</h2>
+                <span className="text-cyan-400 text-sm font-medium">{movimientos.length} {t.totalTransacciones}</span>
+              </div>
+
+              {isLoading ? (
+                <div className="space-y-4">{[...Array(3)].map((_, i) => (<div key={i} className="bg-[#1e293b]/50 border border-blue-900/20 rounded-xl p-5 animate-pulse"><div className="flex items-center justify-between"><div className="flex items-center"><div className="w-10 h-10 bg-slate-800 rounded-xl mr-4"></div><div><div className="h-4 w-32 bg-slate-800 rounded"></div><div className="h-3 w-24 bg-slate-800 rounded mt-2"></div></div></div><div className="h-6 w-20 bg-slate-800 rounded"></div></div></div>))}</div>
+              ) : movimientos.length === 0 ? (
+                <div className="bg-[#1e293b] border border-dashed border-blue-900/30 rounded-xl p-8 text-center"><p className="text-gray-500">No hay registros financieros aún.</p><p className="text-gray-400 text-sm mt-2">Escribe una operación o consulta para comenzar el análisis.</p></div>
+              ) : (
+                <div className="space-y-3">
+                  {movimientos.map((movimiento, index) => (
+                    <div key={movimiento.id} className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between hover:border-cyan-500/40 transition-all duration-300 group animate-fade-in-up" style={{ animationDelay: `${index * 0.05}s` }}>
+                      <div className="flex items-center flex-1 w-full sm:w-auto">
+                        <div className="text-3xl mr-4 w-10 flex-shrink-0">{movimiento.emoji || '📄'}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-white break-words text-sm sm:text-base">{movimiento.concepto || movimiento.texto || 'Sin concepto'}</p>
+                          <p className="text-sm text-gray-400">{movimiento.categoria || 'Sin categoría'}</p>
+                          {movimiento.recomendacion && <p className="text-xs text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-md">{movimiento.recomendacion}</p>}
+                          {(movimiento.proveedor || movimiento.numeroFactura) && (
+                            <p className="text-xs text-cyan-400 mt-1 truncate max-w-[200px] sm:max-w-md">
+                              {movimiento.proveedor && `Proveedor: ${movimiento.proveedor}`}
+                              {movimiento.numeroFactura && ` | Factura: ${movimiento.numeroFactura}`}
+                            </p>
+                          )}
+                          {movimiento.fechaVencimiento && (
+                            <p className="text-xs text-orange-400 mt-1">
+                              📅 Vence: {new Date(movimiento.fechaVencimiento).toLocaleDateString('es-CO')}
+                              {calcularDiasParaVencer(movimiento.fechaVencimiento) <= 3 && ` (¡URGENTE!)`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between w-full sm:w-auto mt-3 sm:mt-0">
+                        <div className="text-right">
+                          <p className={`text-lg font-bold ${movimiento.tipo === 'ingreso' ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {movimiento.tipo === 'ingreso' ? '+' : '-'} {formatearValor(movimiento.valor || 0)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {movimiento.fecha ? new Date(movimiento.fecha).toLocaleDateString('es-CO') : 'Hoy'}
+                          </p>
+                        </div>
+                        <button onClick={() => handleDelete(movimiento.id)} className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 p-2 rounded-lg">
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
+            </section>
+          </>
+        ) : (
+          /* MENSAJE DE ACCESO RESTRINGIDO PARA USUARIOS SIN SUSCRIPCIÓN ACTIVA */
+          <div className="bg-[#1e293b] rounded-2xl p-12 mb-8 border border-yellow-500/30 text-center">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-yellow-400 mb-4">Acceso Restringido</h2>
+            <p className="text-gray-400 max-w-md mx-auto mb-6">
+              Para acceder a todas las funciones de STRATIUM AI, por favor activa tu suscripción.
+            </p>
+            <button
+              onClick={() => {
+                setFuncionBloqueada('Dashboard completo');
+                setModalUpgradeOpen(true);
+              }}
+              className="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold rounded-lg transition-all"
+            >
+              Activar Suscripción
+            </button>
           </div>
-
-          <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">📋 {t.dictamen}</h2>
-            <div className="bg-[#0f172a] rounded-xl p-4 h-64 overflow-y-auto whitespace-pre-wrap font-mono text-sm text-gray-300">
-              {dictamenGeneral || 'Esperando datos para generar análisis...'}
-            </div>
-          </div>
-        </div>
-
-        {/* Magic Input */}
-        <div className="max-w-3xl mx-auto mb-8">
-          <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-1 shadow-2xl">
-            <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
-              <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={t.ejemplo} className="flex-1 bg-[#0f172a] text-white placeholder-gray-400 border border-blue-900/20 rounded-xl px-6 py-4 focus:outline-none focus:ring-2 focus:ring-cyan-500" disabled={isLoading || escaneando || procesandoOCR} />
-              <button type="submit" disabled={isLoading || escaneando || procesandoOCR || !inputValue.trim()} className={`bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition-all duration-300 flex items-center justify-center whitespace-nowrap ${
-                isLoading || escaneando || procesandoOCR || !inputValue.trim() ? 'opacity-70 cursor-not-allowed' : 'hover:shadow-cyan-500/25'
-              }`}>
-                <span className="text-xl mr-2">{escaneando ? '🔍' : '🚀'}</span>
-                <span className="hidden sm:inline">{escaneando ? 'Escaneando...' : t.analizar}</span>
-              </button>
-            </form>
-          </div>
-          <p className="text-center text-gray-500 text-sm mt-3">
-            {t.ejemplo}
-          </p>
-        </div>
-
-        {/* Lista de Movimientos */}
-        <section>
-          <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
-            <h2 className="text-2xl font-bold text-white">{t.registros}</h2>
-            <span className="text-cyan-400 text-sm font-medium">{movimientos.length} {t.totalTransacciones}</span>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-4">{[...Array(3)].map((_, i) => (<div key={i} className="bg-[#1e293b]/50 border border-blue-900/20 rounded-xl p-5 animate-pulse"><div className="flex items-center justify-between"><div className="flex items-center"><div className="w-10 h-10 bg-slate-800 rounded-xl mr-4"></div><div><div className="h-4 w-32 bg-slate-800 rounded"></div><div className="h-3 w-24 bg-slate-800 rounded mt-2"></div></div></div><div className="h-6 w-20 bg-slate-800 rounded"></div></div></div>))}</div>
-          ) : movimientos.length === 0 ? (
-            <div className="bg-[#1e293b] border border-dashed border-blue-900/30 rounded-xl p-8 text-center"><p className="text-gray-500">No hay registros financieros aún.</p><p className="text-gray-400 text-sm mt-2">Escribe una operación o consulta para comenzar el análisis.</p></div>
-          ) : (
-            <div className="space-y-3">
-              {movimientos.map((movimiento, index) => (
-                <div key={movimiento.id} className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between hover:border-cyan-500/40 transition-all duration-300 group animate-fade-in-up" style={{ animationDelay: `${index * 0.05}s` }}>
-                  <div className="flex items-center flex-1 w-full sm:w-auto">
-                    <div className="text-3xl mr-4 w-10 flex-shrink-0">{movimiento.emoji || '📄'}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-white break-words text-sm sm:text-base">{movimiento.concepto || movimiento.texto || 'Sin concepto'}</p>
-                      <p className="text-sm text-gray-400">{movimiento.categoria || 'Sin categoría'}</p>
-                      {movimiento.recomendacion && <p className="text-xs text-gray-500 mt-1 truncate max-w-[200px] sm:max-w-md">{movimiento.recomendacion}</p>}
-                      {(movimiento.proveedor || movimiento.numeroFactura) && (
-                        <p className="text-xs text-cyan-400 mt-1 truncate max-w-[200px] sm:max-w-md">
-                          {movimiento.proveedor && `Proveedor: ${movimiento.proveedor}`}
-                          {movimiento.numeroFactura && ` | Factura: ${movimiento.numeroFactura}`}
-                        </p>
-                      )}
-                      {movimiento.fechaVencimiento && (
-                        <p className="text-xs text-orange-400 mt-1">
-                          📅 Vence: {new Date(movimiento.fechaVencimiento).toLocaleDateString('es-CO')}
-                          {calcularDiasParaVencer(movimiento.fechaVencimiento) <= 3 && ` (¡URGENTE!)`}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between w-full sm:w-auto mt-3 sm:mt-0">
-                    <div className="text-right">
-                      <p className={`text-lg font-bold ${movimiento.tipo === 'ingreso' ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {movimiento.tipo === 'ingreso' ? '+' : '-'} {formatearValor(movimiento.valor || 0)}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {movimiento.fecha ? new Date(movimiento.fecha).toLocaleDateString('es-CO') : 'Hoy'}
-                      </p>
-                    </div>
-                    <button onClick={() => handleDelete(movimiento.id)} className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 p-2 rounded-lg">
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+        )}
       </main>
 
       <footer className="py-6 px-4 border-t border-blue-900/20 mt-12">
@@ -4194,7 +4453,7 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
         />
       )}
 
-            {/* Modal de pago con Stripe - OCULTO TEMPORALMENTE */}
+      {/* Modal de pago con Stripe - OCULTO TEMPORALMENTE */}
       {/*
       {mostrarCheckoutStripe && (
         <CheckoutStripe
@@ -4217,9 +4476,23 @@ Esta acción quedará registrada en la bitácora de auditoría.`)) {
         />
       )}
       */}
+
+      {/* Modal Configuración Auditoría */}
+      {mostrarConfigModal && (
+        <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4" onClick={() => setMostrarConfigModal(false)}>
+          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <ConfiguracionAuditoria 
+              usuarioActual={usuarioActual} 
+              idioma={idioma} 
+              onClose={() => setMostrarConfigModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default App;
+
 

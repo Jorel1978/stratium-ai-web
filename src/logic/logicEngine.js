@@ -14,7 +14,7 @@ export const calcularUnitario = (total, cantidad) => {
 
 /**
  * Convierte cualquier formato de número a float
- * Maneja: $35,000.00, 35.000,00, 35000, 35,000.00, etc.
+ * Maneja: $35,000.00, 35.000,00, 35000, 35,000.00, USD 1,234.56, etc.
  * @param {string|number} valor - Valor a convertir
  * @returns {number} - Número convertido o 0 si falla
  */
@@ -26,7 +26,8 @@ export const limpiarNumeroInternacional = (valor) => {
     let strValor = String(valor).trim();
     if (!strValor) return 0.0;
     
-    strValor = strValor.replace('$', '').replace(' ', '');
+    // ✅ CORRECCIÓN 1: Eliminar símbolos monetarios globalmente (USD, $, €, £, COP)
+    strValor = strValor.replace(/[A-Za-z\s\$€£¥]/g, '');
     
     let strLimpio;
     
@@ -79,6 +80,9 @@ export const limpiarNumero = (valor) => {
     let texto = String(valor).trim();
     if (!texto) return 0.0;
     
+    // ✅ CORRECCIÓN 1: Eliminar símbolos monetarios globalmente
+    texto = texto.replace(/[A-Za-z\s\$€£¥]/g, '');
+    
     if (texto.includes(',') && !texto.includes('.')) {
         const partes = texto.split(',');
         if (partes.length === 2 && partes[1].length <= 3) {
@@ -88,7 +92,6 @@ export const limpiarNumero = (valor) => {
         }
     }
     
-    texto = texto.replace('$', '').replace('€', '').replace('USD', '').replace(/\s/g, '');
     texto = texto.replace(/[^\d.-]/g, '');
     
     const partes = texto.split('.');
@@ -115,11 +118,12 @@ export const normalizarTexto = (texto) => {
 };
 
 /**
- * Procesa costeo de producción
+ * Procesa costeo de producción (Bilingüe)
  * @param {Object} params - Parámetros de costeo
+ * @param {string} lang - Idioma ('es' o 'en')
  * @returns {Object} - Resultado del costeo
  */
-export const procesarCosteo = ({ materiales, horas, valorHora, transporte, precioVenta = null, config = {} }) => {
+export const procesarCosteo = ({ materiales, horas, valorHora, transporte, precioVenta = null, config = {} }, lang = 'es') => {
     const valorHoraEfectivo = valorHora || config.valor_hora || 20000;
     const gastosFijos = config.gastos_fijos || 0;
     
@@ -144,14 +148,21 @@ export const procesarCosteo = ({ materiales, horas, valorHora, transporte, preci
         const utilidadNeta = precioVenta - costoTotalOperativo;
         const margenNeto = (utilidadNeta / precioVenta) * 100;
         
+        // ✅ CORRECCIÓN 2: Mensajes bilingües
+        const dictamen = lang === 'es' 
+            ? (margenNeto < 20 
+                ? `⚠️ ALERTA: El margen es de ${margenNeto.toFixed(1)}%. Estás trabajando para cubrir gastos. Sube el precio o reduce el tiempo de producción.`
+                : `✅ El margen es de ${margenNeto.toFixed(1)}%. Este servicio/producto es rentable.`)
+            : (margenNeto < 20
+                ? `⚠️ ALERT: The margin is ${margenNeto.toFixed(1)}%. You are working to cover expenses. Raise the price or reduce production time.`
+                : `✅ The margin is ${margenNeto.toFixed(1)}%. This service/product is profitable.`);
+        
         resultado = {
             ...resultado,
             precioVenta: precioVenta,
             utilidadNeta: utilidadNeta,
             margenNeto: parseFloat(margenNeto.toFixed(1)),
-            dictamen: margenNeto < 20 
-                ? `ALERTA: El margen es de ${margenNeto.toFixed(1)}%. Estás trabajando para cubrir gastos. Sube el precio o reduce el tiempo de producción.`
-                : `El margen es de ${margenNeto.toFixed(1)}%. Este servicio/producto es rentable.`
+            dictamen: dictamen
         };
     }
     
@@ -159,48 +170,74 @@ export const procesarCosteo = ({ materiales, horas, valorHora, transporte, preci
 };
 
 /**
- * Valida una operación financiera
+ * Valida una operación financiera (Bilingüe)
+ * @param {string} tipo - 'INGRESO' o 'EGRESO'
+ * @param {number} monto - Monto de la operación
+ * @param {string} concepto - Concepto de la operación
+ * @param {number} saldoCajaActual - Saldo actual en caja
+ * @param {string} lang - Idioma ('es' o 'en')
+ * @returns {Object} - Resultado de la validación
  */
-export const validarOperacion = (tipo, monto, concepto, saldoCajaActual) => {
+export const validarOperacion = (tipo, monto, concepto, saldoCajaActual, lang = 'es') => {
     const montoNum = parseFloat(monto);
     const tipoUpper = tipo.toUpperCase();
     const saldo = parseFloat(saldoCajaActual) || 0;
     
+    // ✅ CORRECCIÓN: ADVERTENCIA (no bloqueo) - permite registrar aunque supere el saldo
     if (tipoUpper === 'EGRESO' && montoNum > saldo) {
+        const mensaje = lang === 'es'
+            ? `⚠️ ADVERTENCIA: Este gasto de ${formatMoney(montoNum, lang)} supera tu saldo actual (${formatMoney(saldo, lang)}). Asegúrate de tener fondos suficientes.`
+            : `⚠️ WARNING: This expense of ${formatMoney(montoNum, lang)} exceeds your current balance (${formatMoney(saldo, lang)}). Make sure you have sufficient funds.`;
         return {
-            aprobado: false,
-            mensaje: `ALERTA DE CAJA: No puedes registrar un gasto de ${formatMoney(montoNum)} porque solo tienes ${formatMoney(saldo)} en caja.`
+            aprobado: true,  // ✅ Cambiado a true (permite el registro)
+            mensaje: mensaje
         };
     }
     
-    const conceptosVagos = ["varios", "cosa", "pago", ".", "gastos", "etc", "x"];
-    const conceptoLower = concepto ? concepto.toLowerCase() : '';
+    // ✅ CORRECCIÓN CRÍTICA: Detección de conceptos vagos (con plurales y frases cortas)
+    const conceptosVagos = ["varios", "cosa", "pago", "gastos", "etc", "x", "varios", "thing", "payment", "stuff", "expense", "gasto", "cosas", "pagoss", "gastoss"];
+    const conceptoLower = concepto ? concepto.toLowerCase().trim() : '';
     
-    if (!conceptoLower || conceptosVagos.includes(conceptoLower) || conceptoLower.length < 4) {
+    // Comprobar si el concepto ES una palabra vaga o EMPIEZA por una palabra vaga muy corta (menos de 7 caracteres)
+    const esVago = conceptosVagos.some(vago => 
+        conceptoLower === vago || 
+        (conceptoLower.startsWith(vago) && conceptoLower.length < 8)
+    );
+    
+    // También detectar si el concepto tiene menos de 4 caracteres (ej: "ok", "si", "no", "ya")
+    const esDemasiadoCorto = conceptoLower.length < 4 && conceptoLower.length > 0;
+    
+    if (!conceptoLower || esVago || esDemasiadoCorto) {
+        const mensaje = lang === 'es'
+            ? "❌ CONCEPTO MUY VAGO: Necesito saber exactamente qué compraste o vendiste. Ejemplos válidos: 'Compra 10 gorras', 'Venta de camisas', 'Pago de arriendo'."
+            : "❌ VERY VAGUE CONCEPT: I need to know exactly what you bought or sold. Valid examples: 'Buy 10 caps', 'Sale of shirts', 'Rent payment'.";
         return {
             aprobado: false,
-            mensaje: "CONCEPTO MUY VAGO: Necesito saber exactamente en qué se fue la plata."
+            mensaje: mensaje
         };
     }
     
+    const mensaje = lang === 'es' ? "✅ Movimiento Validado." : "✅ Transaction Validated.";
     return {
         aprobado: true,
-        mensaje: "Movimiento Validado."
+        mensaje: mensaje
     };
 };
 
 /**
  * Categoriza automáticamente un gasto
+ * @param {string} concepto - Concepto del gasto
+ * @returns {string} - Categoría del gasto
  */
 export const categorizarGasto = (concepto) => {
     if (!concepto) return 'otros_gastos';
     const conceptoLower = concepto.toLowerCase();
     
     const categorias = {
-        'operativo': ['arriendo', 'nomina', 'sueldo', 'servicios', 'luz', 'agua', 'internet'],
-        'logistica': ['transporte', 'flete', 'gasolina', 'domicilio'],
-        'marketing': ['publicidad', 'facebook', 'instagram', 'volantes', 'comision'],
-        'directo': ['mercancia', 'materia prima', 'insumos', 'compra']
+        'operativo': ['arriendo', 'nomina', 'sueldo', 'servicios', 'luz', 'agua', 'internet', 'rent', 'payroll', 'salary', 'utilities', 'electricity', 'water', 'internet'],
+        'logistica': ['transporte', 'flete', 'gasolina', 'domicilio', 'transport', 'freight', 'gasoline', 'delivery'],
+        'marketing': ['publicidad', 'facebook', 'instagram', 'volantes', 'comision', 'advertising', 'commission'],
+        'directo': ['mercancia', 'materia prima', 'insumos', 'compra', 'merchandise', 'raw material', 'supplies', 'purchase']
     };
     
     for (const [categoria, palabras] of Object.entries(categorias)) {
@@ -212,9 +249,20 @@ export const categorizarGasto = (concepto) => {
 };
 
 /**
- * Formatea un número como moneda COP
+ * Formatea un número como moneda (COP o USD)
+ * @param {number} valor - Valor a formatear
+ * @param {string} lang - Idioma ('es' o 'en')
+ * @returns {string} - Valor formateado
  */
-const formatMoney = (valor) => {
+const formatMoney = (valor, lang = 'es') => {
+    if (lang === 'en') {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(Math.abs(valor));
+    }
     return new Intl.NumberFormat('es-CO', {
         style: 'currency',
         currency: 'COP',
@@ -224,37 +272,60 @@ const formatMoney = (valor) => {
 };
 
 /**
- * Genera recomendación financiera
+ * Genera recomendación financiera (Bilingüe)
+ * @param {string} tipo - 'INGRESO' o 'EGRESO'
+ * @param {number} valor - Valor de la operación
+ * @param {string} categoria - Categoría del gasto
+ * @param {number} saldoCaja - Saldo actual en caja
+ * @param {string} lang - Idioma ('es' o 'en')
+ * @returns {string} - Recomendación
  */
-const generarRecomendacion = (tipo, valor, categoria, saldoCaja) => {
+const generarRecomendacion = (tipo, valor, categoria, saldoCaja, lang = 'es') => {
     if (tipo === 'INGRESO') {
         if (saldoCaja < 0) {
-            return `Este ingreso de ${formatMoney(valor)} ayuda a reducir el saldo negativo.`;
+            return lang === 'es'
+                ? `💰 Este ingreso de ${formatMoney(valor, lang)} ayuda a reducir el saldo negativo.`
+                : `💰 This income of ${formatMoney(valor, lang)} helps reduce the negative balance.`;
         }
-        return `Ingreso registrado. Considera destinar un 20% a ahorro/inversión.`;
+        return lang === 'es'
+            ? `💰 Ingreso registrado. Considera destinar un 20% a ahorro/inversión.`
+            : `💰 Income recorded. Consider allocating 20% to savings/investment.`;
     }
     
     const porcentajeGasto = saldoCaja > 0 ? (valor / saldoCaja) * 100 : 100;
     
     if (porcentajeGasto > 30) {
-        return `Este gasto representa el ${porcentajeGasto.toFixed(1)}% de tu saldo disponible. Evalúa si es urgente.`;
+        return lang === 'es'
+            ? `⚠️ Este gasto representa el ${porcentajeGasto.toFixed(1)}% de tu saldo disponible. Evalúa si es urgente.`
+            : `⚠️ This expense represents ${porcentajeGasto.toFixed(1)}% of your available balance. Evaluate if it is urgent.`;
     }
     
     if (categoria === 'marketing') {
-        return `Inversión en marketing. Recomiendo medir el ROI de esta campaña.`;
+        return lang === 'es'
+            ? `📢 Inversión en marketing. Recomiendo medir el ROI de esta campaña.`
+            : `📢 Investment in marketing. I recommend measuring the ROI of this campaign.`;
     }
     
     if (categoria === 'directo') {
-        return `Compra de inventario. Asegúrate de que estos productos tengan rotación rápida.`;
+        return lang === 'es'
+            ? `📦 Compra de inventario. Asegúrate de que estos productos tengan rotación rápida.`
+            : `📦 Inventory purchase. Make sure these products have fast turnover.`;
     }
     
-    return `Gasto registrado. Revisa que esté alineado con tu presupuesto.`;
+    return lang === 'es'
+        ? `📝 Gasto registrado. Revisa que esté alineado con tu presupuesto.`
+        : `📝 Expense recorded. Check that it is aligned with your budget.`;
 };
 
 /**
- * Auditoría completa de una operación
+ * Auditoría completa de una operación (Bilingüe)
+ * @param {string} texto - Texto de la operación
+ * @param {number} valor - Valor de la operación
+ * @param {Object} contexto - Contexto de la operación
+ * @param {string} lang - Idioma ('es' o 'en')
+ * @returns {Object} - Resultado de la auditoría
  */
-export const auditarOperacion = (texto, valor, contexto = {}) => {
+export const auditarOperacion = (texto, valor, contexto = {}, lang = 'es') => {
     const textoNormalizado = normalizarTexto(texto);
     const valorNum = parseFloat(valor) || 0;
     const saldoCaja = parseFloat(contexto.saldoCaja) || 0;
@@ -263,20 +334,24 @@ export const auditarOperacion = (texto, valor, contexto = {}) => {
     if (textoNormalizado.includes('compra') || 
         textoNormalizado.includes('gasto') || 
         textoNormalizado.includes('pago') ||
-        textoNormalizado.includes('nomina')) {
+        textoNormalizado.includes('nomina') ||
+        textoNormalizado.includes('buy') ||
+        textoNormalizado.includes('expense') ||
+        textoNormalizado.includes('payment') ||
+        textoNormalizado.includes('payroll')) {
         tipo = 'EGRESO';
     }
     
     let concepto = textoNormalizado
         .replace(/\d+(?:[.,]\d+)*/g, '')
-        .replace(/^(compra|venta|gasto|ingreso|pago|registra|escanea|analiza):?\s*/i, '')
-        .replace(/^(por|a|de|para|con)\s+/i, '')
+        .replace(/^(compra|venta|gasto|ingreso|pago|registra|escanea|analiza|buy|sale|expense|income|payment|register|scan|analyze):?\s*/i, '')
+        .replace(/^(por|a|de|para|con|for|to|of|with|by)\s+/i, '')
         .trim();
     
     if (!concepto) concepto = texto.substring(0, 50);
     concepto = concepto.charAt(0).toUpperCase() + concepto.slice(1);
     
-    const validacion = validarOperacion(tipo, valorNum, concepto, saldoCaja);
+    const validacion = validarOperacion(tipo, valorNum, concepto, saldoCaja, lang);
     const categoria = tipo === 'EGRESO' ? categorizarGasto(concepto) : 'ingreso';
     
     const emojis = {
@@ -286,7 +361,7 @@ export const auditarOperacion = (texto, valor, contexto = {}) => {
     };
     
     const emoji = emojis[categoria] || emojis[tipo.toLowerCase()] || '📝';
-    const nombreCategoria = categoria === 'ingreso' ? 'Venta' : categoria.charAt(0).toUpperCase() + categoria.slice(1).replace('_', ' ');
+    const nombreCategoria = categoria === 'ingreso' ? (lang === 'es' ? 'Venta' : 'Sale') : categoria.charAt(0).toUpperCase() + categoria.slice(1).replace('_', ' ');
     
     return {
         textoOriginal: texto,
@@ -297,7 +372,7 @@ export const auditarOperacion = (texto, valor, contexto = {}) => {
         emoji: emoji,
         validado: validacion.aprobado,
         mensajeValidacion: validacion.mensaje,
-        recomendacion: validacion.aprobado ? generarRecomendacion(tipo, valorNum, categoria, saldoCaja) : '',
+        recomendacion: validacion.aprobado ? generarRecomendacion(tipo, valorNum, categoria, saldoCaja, lang) : '',
         saldoCajaActual: saldoCaja,
         saldoSimulado: tipo === 'EGRESO' ? saldoCaja - valorNum : saldoCaja + valorNum,
         cantidad: 1
@@ -305,27 +380,91 @@ export const auditarOperacion = (texto, valor, contexto = {}) => {
 };
 
 // ============================================================
-// 🚀 NUEVA FUNCIÓN: ANALIZAR SALUD FINANCIERA (CFO AGGRESSIVE)
+// 🚀 FUNCIÓN: ANALIZAR SALUD FINANCIERA (CFO AGGRESSIVE)
 // ============================================================
 
 /**
- * Calcula días desde la última venta de un producto
+ * Calcula días desde la última venta o desde la fecha de registro
  * @param {string} producto - Nombre del producto
  * @param {Array} movimientos - Lista de transacciones
- * @returns {number} - Días desde la última venta
+ * @param {Object} inventarioItem - Datos del producto en inventario
+ * @returns {Object} - Días en stock y fecha de referencia
  */
-const calcularDiasSinVenta = (producto, movimientos) => {
-    if (!producto) return 999;
+const calcularDiasEnStock = (producto, movimientos, inventarioItem) => {
+    // Buscar ventas del producto
     const ventasProducto = movimientos.filter(m => 
         m.tipo === 'ingreso' && 
         m.concepto?.toLowerCase() === producto.toLowerCase()
     );
     
-    if (ventasProducto.length === 0) return 999;
+    let diasEnStock = null;
+    let fechaReferencia = null;
     
-    const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
-    const hoy = new Date();
-    return Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
+    // Si hay ventas, calcular días desde la última venta
+    if (ventasProducto.length > 0) {
+        const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
+        const hoy = new Date();
+        diasEnStock = Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
+        fechaReferencia = ultimaVenta;
+    } 
+    // Si no hay ventas, usar fecha de registro del producto
+    else if (inventarioItem?.fechaRegistro || inventarioItem?.fechaActualizacion) {
+        const fechaRegistro = inventarioItem.fechaRegistro?.toDate?.() || 
+                              inventarioItem.fechaActualizacion?.toDate?.() || 
+                              new Date(inventarioItem.fechaRegistro || inventarioItem.fechaActualizacion);
+        const hoy = new Date();
+        diasEnStock = Math.floor((hoy - fechaRegistro) / (1000 * 60 * 60 * 24));
+        fechaReferencia = fechaRegistro;
+    }
+    
+    return { diasEnStock, fechaReferencia, tieneVentas: ventasProducto.length > 0 };
+};
+
+/**
+ * Calcula precio sugerido según rango de días
+ * @param {number} costoUnitario - Costo del producto
+ * @param {number} diasEnStock - Días sin rotación
+ * @param {string} lang - Idioma
+ * @returns {Object} - Rango de precios sugeridos
+ */
+const calcularPrecioSugerido = (costoUnitario, diasEnStock, lang = 'es') => {
+    let rangoMin = 0;
+    let rangoMax = 0;
+    let porcentajeMin = 0;
+    let porcentajeMax = 0;
+    let mensaje = '';
+    let tipo = '';
+    
+    if (diasEnStock > 180) {
+        porcentajeMin = 10;
+        porcentajeMax = 30;
+        rangoMin = costoUnitario * 1.10;
+        rangoMax = costoUnitario * 1.30;
+        tipo = 'RECUPERACION';
+        mensaje = lang === 'es' 
+            ? `⚠️ Producto con más de 180 días sin rotación. Precio sugerido: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Recuperación de inversión - margen ${porcentajeMin}%-${porcentajeMax}%)`
+            : `⚠️ Product with over 180 days without rotation. Suggested price: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Investment recovery - ${porcentajeMin}%-${porcentajeMax}% margin)`;
+    } else if (diasEnStock > 90) {
+        porcentajeMin = 30;
+        porcentajeMax = 45;
+        rangoMin = costoUnitario * 1.30;
+        rangoMax = costoUnitario * 1.45;
+        tipo = 'LIQUIDACION';
+        mensaje = lang === 'es'
+            ? `⚠️ Producto con más de 90 días sin rotación. Precio sugerido: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Liquidación - margen ${porcentajeMin}%-${porcentajeMax}%)`
+            : `⚠️ Product with over 90 days without rotation. Suggested price: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Liquidation - ${porcentajeMin}%-${porcentajeMax}% margin)`;
+    } else if (diasEnStock > 30) {
+        porcentajeMin = 45;
+        porcentajeMax = 60;
+        rangoMin = costoUnitario * 1.45;
+        rangoMax = costoUnitario * 1.60;
+        tipo = 'IMPULSO';
+        mensaje = lang === 'es'
+            ? `⚠️ Producto con más de 30 días sin rotación. Precio sugerido: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Impulso - margen ${porcentajeMin}%-${porcentajeMax}%)`
+            : `⚠️ Product with over 30 days without rotation. Suggested price: ${formatMoney(rangoMin, lang)} - ${formatMoney(rangoMax, lang)} (Boost - ${porcentajeMin}%-${porcentajeMax}% margin)`;
+    }
+    
+    return { rangoMin, rangoMax, porcentajeMin, porcentajeMax, mensaje, tipo, tieneAlerta: diasEnStock > 30 };
 };
 
 /**
@@ -333,9 +472,10 @@ const calcularDiasSinVenta = (producto, movimientos) => {
  * @param {Array} movimientos - Lista de transacciones
  * @param {Array} inventario - Lista de productos en stock (opcional)
  * @param {Object} config - Configuración del negocio
+ * @param {string} lang - Idioma ('es' o 'en')
  * @returns {Object} - Alertas y recomendaciones
  */
-export const analizarSaludFinanciera = (movimientos, inventario = [], config = {}) => {
+export const analizarSaludFinanciera = (movimientos, inventario = [], config = {}, lang = 'es') => {
     const hoy = new Date();
     const ultimos30Dias = movimientos.filter(m => {
         if (!m.fecha) return false;
@@ -351,11 +491,22 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
     const totalGastos = gastos.reduce((s, m) => s + (m.valor || 0), 0);
     const saldoActual = totalVentas - totalGastos;
     
-    // 1. GASTOS DIARIOS PROMEDIO Y OXÍGENO FINANCIERO
+    // GASTOS DIARIOS PROMEDIO Y OXÍGENO FINANCIERO
     const gastoDiarioPromedio = totalGastos / 30;
-    const diasOxigeno = gastoDiarioPromedio > 0 ? Math.floor(saldoActual / gastoDiarioPromedio) : 999;
+    let diasOxigeno = 0;
     
-    // 2. ALERTAS DE PRODUCTOS HUESO (sin ventas en 15+ días)
+    if (totalVentas === 0 && saldoActual < 0) {
+        diasOxigeno = 0;
+    } else if (gastoDiarioPromedio <= 0 || totalVentas === 0) {
+        diasOxigeno = null;
+    } else {
+        diasOxigeno = Math.floor(saldoActual / gastoDiarioPromedio);
+        if (diasOxigeno < 0) diasOxigeno = 0;
+    }
+    
+    // ============================================================
+    // 2. ALERTAS DE PRODUCTOS CON BAJA ROTACIÓN (CORREGIDO)
+    // ============================================================
     const alertasProductos = [];
     const productosConVentas = new Set();
     
@@ -363,34 +514,45 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         if (v.concepto) productosConVentas.add(v.concepto.toLowerCase());
     });
     
-    // Si no hay inventario cargado, deducir de ventas pasadas
-    const productosParaAnalizar = inventario.length > 0 ? inventario : ventas.map(v => ({ producto: v.concepto }));
-    const productosUnicos = new Map();
+    // Recorrer inventario real
+    const inventarioLocal = inventario.length > 0 ? inventario : [];
     
-    productosParaAnalizar.forEach(p => {
-        const nombre = p.producto || p.concepto;
-        if (nombre && !productosUnicos.has(nombre.toLowerCase())) {
-            productosUnicos.set(nombre.toLowerCase(), nombre);
-        }
-    });
-    
-    for (const [nombreLower, nombreOriginal] of productosUnicos) {
-        if (!productosConVentas.has(nombreLower)) {
-            const diasSinVenta = calcularDiasSinVenta(nombreOriginal, movimientos);
-            if (diasSinVenta > 15) {
+    for (const item of inventarioLocal) {
+        const nombreOriginal = item.producto;
+        const cantidad = item.cantidad || 0;
+        const costoUnitario = item.costoUnitario || 0;
+        
+        if (!nombreOriginal || cantidad <= 0) continue;
+        
+        // Calcular días en stock usando la nueva función
+        const { diasEnStock, fechaReferencia, tieneVentas } = calcularDiasEnStock(nombreOriginal, movimientos, item);
+        
+        // Solo alertar si tiene más de 30 días en stock y hay stock disponible
+        if (diasEnStock !== null && diasEnStock > 30 && cantidad > 0) {
+            const { mensaje, tieneAlerta, rangoMin, rangoMax, porcentajeMin, porcentajeMax, tipo } = calcularPrecioSugerido(costoUnitario, diasEnStock, lang);
+            
+            if (tieneAlerta) {
                 alertasProductos.push({
-                    tipo: 'PRODUCTO_HUESO',
+                    tipo: 'PRODUCTO_BAJA_ROTACION',
                     producto: nombreOriginal,
-                    mensaje: `📦 "${nombreOriginal}" no se vende hace ${diasSinVenta} días. Baja el precio un 10% para recuperar capital.`,
-                    accion: 'BAJAR_PRECIO',
-                    urgencia: diasSinVenta > 30 ? 'ALTA' : 'MEDIA',
-                    diasSinVenta
+                    mensaje: mensaje,
+                    diasEnStock: diasEnStock,
+                    cantidad: cantidad,
+                    costoUnitario: costoUnitario,
+                    precioSugeridoMin: rangoMin,
+                    precioSugeridoMax: rangoMax,
+                    margenSugeridoMin: porcentajeMin,
+                    margenSugeridoMax: porcentajeMax,
+                    tipoSugerencia: tipo,
+                    fechaReferencia: fechaReferencia,
+                    tieneVentas: tieneVentas,
+                    accion: 'REVISAR_PRECIO'
                 });
             }
         }
     }
     
-    // 3. ALERTAS DE MARGEN BAJO (para dropshipping/comercio)
+    // 3. ALERTAS DE MARGEN BAJO
     const alertasMargen = [];
     ventas.forEach(venta => {
         const cantidad = venta.cantidad || 1;
@@ -399,10 +561,13 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         const margen = precio > 0 ? ((precio - costo) / precio) * 100 : 0;
         
         if (costo > 0 && margen < 20 && margen > 0) {
+            const mensaje = lang === 'es'
+                ? `💰 "${venta.concepto}" tiene margen del ${margen.toFixed(1)}% (mínimo recomendado 20%). Si las devoluciones superan el 5%, estás perdiendo dinero.`
+                : `💰 "${venta.concepto}" has a margin of ${margen.toFixed(1)}% (minimum recommended 20%). If returns exceed 5%, you are losing money.`;
             alertasMargen.push({
                 tipo: 'MARGEN_BAJO',
                 producto: venta.concepto,
-                mensaje: `💰 "${venta.concepto}" tiene margen del ${margen.toFixed(1)}% (mínimo recomendado 20%). Si las devoluciones superan el 5%, estás perdiendo dinero.`,
+                mensaje: mensaje,
                 accion: 'REVISAR_PRECIO',
                 urgencia: margen < 10 ? 'ALTA' : 'MEDIA',
                 margenActual: margen
@@ -431,15 +596,23 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         }
     }
     
-    // 5. ALERTA DE QUIEBRA (menos de 15 días de oxígeno)
+    // 5. ALERTA DE QUIEBRA
     let alertaQuiebra = null;
-    if (diasOxigeno < 15) {
+    if (diasOxigeno !== null && diasOxigeno < 15 && diasOxigeno >= 0) {
+        const mensaje = lang === 'es'
+            ? `⏳ Tu negocio tiene ${diasOxigeno} días de oxígeno financiero. Ventas: $${totalVentas.toLocaleString()} vs Gastos: $${totalGastos.toLocaleString()}.`
+            : `⏳ Your business has ${diasOxigeno} days of financial oxygen. Sales: $${totalVentas.toLocaleString()} vs Expenses: $${totalGastos.toLocaleString()}.`;
+        const recomendacion = lang === 'es'
+            ? (diasOxigeno < 7 
+                ? '🚨 URGENTE: Congela gastos no esenciales HOY. Prioriza cobro de cartera.'
+                : '📉 Reduce inventario de productos lentos y negocia plazos con proveedores.')
+            : (diasOxigeno < 7
+                ? '🚨 URGENT: Freeze non-essential expenses TODAY. Prioritize portfolio collection.'
+                : '📉 Reduce inventory of slow products and negotiate terms with suppliers.');
         alertaQuiebra = {
             tipo: 'ALERTA_QUIEBRA',
-            mensaje: `⏳ Tu negocio tiene ${diasOxigeno} días de oxígeno financiero. Ventas: $${totalVentas.toLocaleString()} vs Gastos: $${totalGastos.toLocaleString()}.`,
-            recomendacion: diasOxigeno < 7 
-                ? '🚨 URGENTE: Congela gastos no esenciales HOY. Prioriza cobro de cartera.'
-                : '📉 Reduce inventario de productos lentos y negocia plazos con proveedores.',
+            mensaje: mensaje,
+            recomendacion: recomendacion,
             urgencia: diasOxigeno < 7 ? 'CRITICA' : 'ALTA',
             diasOxigeno
         };
@@ -448,40 +621,79 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
     // 6. RECOMENDACIONES ESTRATÉGICAS
     const recomendaciones = [];
     
-    if (productoEstrella) {
-        recomendaciones.push(`⭐ Tu producto estrella es "${productoEstrella}". Destina el 30% de tu presupuesto de marketing a este producto.`);
+    const noHayVentas = totalVentas === 0;
+    
+    if (noHayVentas && saldoActual < 0) {
+        recomendaciones.push('🚨 No has registrado ventas y tu saldo es negativo. Enfócate en generar tu primer ingreso. Revisa si este gasto fue una inversión necesaria o un gasto evitable.');
+    } else if (noHayVentas && saldoActual >= 0) {
+        recomendaciones.push('📢 Aún no has registrado ventas. Activa tu estrategia comercial para empezar a generar ingresos.');
+    } else if (saldoActual < 0 && totalVentas > 0) {
+        recomendaciones.push('💰 Tus gastos superan tus ventas. Revisa tus costos fijos y busca reducir gastos no esenciales.');
     }
     
-    if (alertasProductos.length > 0) {
-        recomendaciones.push(`📦 Tienes ${alertasProductos.length} productos con baja rotación. Considera liquidarlos con descuento para liberar capital.`);
-        // Productos específicos para liquidar
-        const productosLentos = alertasProductos.slice(0, 3).map(a => a.producto).join(', ');
-        if (productosLentos) {
-            recomendaciones.push(`💸 Prioriza liquidar: ${productosLentos}. Ofrece 2x1 o descuento del 30% para mover stock.`);
+    if (productoEstrella) {
+        const rec = lang === 'es'
+            ? `⭐ Tu producto estrella es "${productoEstrella}". Destina el 30% de tu presupuesto de marketing a este producto.`
+            : `⭐ Your star product is "${productoEstrella}". Allocate 30% of your marketing budget to this product.`;
+        recomendaciones.push(rec);
+    }
+    
+    // Recomendaciones específicas por producto (más potentes)
+    const productosConProblemas = alertasProductos.slice(0, 3);
+    for (const producto of productosConProblemas) {
+        if (producto.tipoSugerencia === 'RECUPERACION') {
+            const rec = lang === 'es'
+                ? `💸 "${producto.producto}" lleva ${producto.diasEnStock} días sin vender. Precio sugerido: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)} (margen ${producto.margenSugeridoMin}%-${producto.margenSugeridoMax}%). Prioriza su liquidación.`
+                : `💸 "${producto.producto}" has not sold for ${producto.diasEnStock} days. Suggested price: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)} (${producto.margenSugeridoMin}%-${producto.margenSugeridoMax}% margin). Prioritize liquidation.`;
+            recomendaciones.push(rec);
+        } else if (producto.tipoSugerencia === 'LIQUIDACION') {
+            const rec = lang === 'es'
+                ? `📉 "${producto.producto}" tiene ${producto.diasEnStock} días sin rotación. Precio sugerido: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)}. Aplica descuento del 30-50%.`
+                : `📉 "${producto.producto}" has ${producto.diasEnStock} days without rotation. Suggested price: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)}. Apply 30-50% discount.`;
+            recomendaciones.push(rec);
+        } else if (producto.tipoSugerencia === 'IMPULSO') {
+            const rec = lang === 'es'
+                ? `⚡ "${producto.producto}" lleva ${producto.diasEnStock} días sin venta. Precio sugerido: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)} (margen ${producto.margenSugeridoMin}%-${producto.margenSugeridoMax}%). Activa promociones.`
+                : `⚡ "${producto.producto}" has not sold for ${producto.diasEnStock} days. Suggested price: ${formatMoney(producto.precioSugeridoMin, lang)} - ${formatMoney(producto.precioSugeridoMax, lang)} (${producto.margenSugeridoMin}%-${producto.margenSugeridoMax}% margin). Activate promotions.`;
+            recomendaciones.push(rec);
         }
     }
     
     if (alertasMargen.length > 0) {
-        recomendaciones.push(`💰 ${alertasMargen.length} productos tienen margen bajo. Revisa precios o negocia mejores costos con proveedores.`);
+        const rec = lang === 'es'
+            ? `💰 ${alertasMargen.length} productos tienen margen bajo. Revisa precios o negocia mejores costos con proveedores.`
+            : `💰 ${alertasMargen.length} products have low margins. Review prices or negotiate better costs with suppliers.`;
+        recomendaciones.push(rec);
         const margenCritico = alertasMargen.filter(a => a.margenActual < 10);
         if (margenCritico.length > 0) {
-            recomendaciones.push(`⚠️ ${margenCritico.length} productos están cerca de vender a pérdida. Ajusta precios URGENTE.`);
+            const rec2 = lang === 'es'
+                ? `⚠️ ${margenCritico.length} productos están cerca de vender a pérdida. Ajusta precios URGENTE.`
+                : `⚠️ ${margenCritico.length} products are close to selling at a loss. Adjust prices URGENTLY.`;
+            recomendaciones.push(rec2);
         }
     }
     
-    if (diasOxigeno < 30 && diasOxigeno >= 15) {
-        recomendaciones.push(`⏳ Tu oxígeno financiero es de ${diasOxigeno} días. Empieza a reducir gastos no esenciales.`);
+    if (diasOxigeno !== null && diasOxigeno < 30 && diasOxigeno > 0) {
+        const rec = lang === 'es'
+            ? `⏳ Tu oxígeno financiero es de ${diasOxigeno} días. Empieza a reducir gastos no esenciales.`
+            : `⏳ Your financial oxygen is ${diasOxigeno} days. Start reducing non-essential expenses.`;
+        recomendaciones.push(rec);
     }
     
-    if (diasOxigeno >= 30) {
-        recomendaciones.push(`✅ Tienes ${diasOxigeno} días de oxígeno. Buen momento para invertir en crecimiento.`);
+    if (diasOxigeno !== null && diasOxigeno >= 30) {
+        const rec = lang === 'es'
+            ? `✅ Tienes ${diasOxigeno} días de oxígeno. Buen momento para invertir en crecimiento.`
+            : `✅ You have ${diasOxigeno} days of oxygen. Good time to invest in growth.`;
+        recomendaciones.push(rec);
     }
     
     // 7. RESUMEN EJECUTIVO
     const margenNeto = totalVentas > 0 ? ((saldoActual / totalVentas) * 100).toFixed(1) : 0;
     const saludPorcentaje = Math.min(100, Math.max(0, (saldoActual / (totalVentas || 1)) * 100));
     const saludColor = saludPorcentaje >= 30 ? '#10b981' : saludPorcentaje >= 15 ? '#f59e0b' : '#ef4444';
-    const saludMensaje = saludPorcentaje >= 30 ? 'Excelente' : saludPorcentaje >= 15 ? 'Estable' : 'Crítico';
+    const saludMensaje = lang === 'es'
+        ? (saludPorcentaje >= 30 ? 'Excelente' : saludPorcentaje >= 15 ? 'Estable' : 'Crítico')
+        : (saludPorcentaje >= 30 ? 'Excellent' : saludPorcentaje >= 15 ? 'Stable' : 'Critical');
     
     return {
         // Métricas clave
@@ -489,7 +701,7 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         ventas30Dias: totalVentas,
         gastos30Dias: totalGastos,
         margenNeto: parseFloat(margenNeto),
-        diasOxigeno,
+        diasOxigeno: diasOxigeno === null ? 0 : diasOxigeno,
         productoEstrella,
         
         // Alertas
@@ -509,7 +721,99 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
     };
 };
 
-// ✅ Exportación nombrada correcta (manteniendo la estructura original)
+// ============================================================
+// 🚀 NUEVA FUNCIÓN: AUDITORÍA DE SOBRECOSTOS DE PROVEEDORES
+// ============================================================
+
+/**
+ * Detecta sobrecostos y aumentos injustificados de proveedores
+ * @param {Array} movimientos - Lista de transacciones
+ * @param {Array} inventario - Lista de productos en stock
+ * @param {string} plan - Plan del usuario ('pro', 'business', 'elite')
+ * @param {string} lang - Idioma ('es' o 'en')
+ * @returns {Object} - Alertas de sobrecostos y ahorro potencial
+ */
+export const auditarSobrecostosProveedores = (movimientos, inventario, plan, lang = 'es') => {
+  // Solo para Business y Elite
+  if (plan !== 'business' && plan !== 'elite') {
+    const mensaje = lang === 'es'
+      ? 'Actualiza a Business o Elite para auditoría de proveedores'
+      : 'Upgrade to Business or Elite for supplier audit';
+    return { sobrecostos: [], ahorroPotencial: 0, mensajeResumen: mensaje };
+  }
+  
+  const alertas = [];
+  const proveedores = {};
+  
+  // ✅ CORRECCIÓN 3: Cambiar 'INVENTARIO' por 'directo' o 'Directo'
+  movimientos.forEach(m => {
+    const categoriaGasto = m.categoria?.toLowerCase() || '';
+    if (m.tipo === 'egreso' && (categoriaGasto === 'directo' || categoriaGasto === 'compra' || categoriaGasto === 'inventario') && m.proveedor) {
+      const key = `${m.proveedor}|${m.concepto}`;
+      if (!proveedores[key]) {
+        proveedores[key] = {
+          proveedor: m.proveedor,
+          producto: m.concepto,
+          precios: [],
+          fechas: [],
+          cantidades: []
+        };
+      }
+      proveedores[key].precios.push(m.costoUnitario || (m.valor / m.cantidad));
+      proveedores[key].fechas.push(m.fecha);
+      proveedores[key].cantidades.push(m.cantidad);
+    }
+  });
+  
+  // Analizar tendencias de precios
+  Object.keys(proveedores).forEach(key => {
+    const data = proveedores[key];
+    if (data.precios.length >= 2) {
+      const precioAnterior = data.precios[data.precios.length - 2];
+      const precioActual = data.precios[data.precios.length - 1];
+      
+      if (precioActual > precioAnterior) {
+        const incremento = ((precioActual - precioAnterior) / precioAnterior) * 100;
+        if (incremento > 5) { // Alertar si subió más del 5%
+          const mensaje = lang === 'es'
+            ? `⚠️ ${data.proveedor} subió el precio de "${data.producto}" de ${formatMoney(precioAnterior, lang)} a ${formatMoney(precioActual, lang)} (+${incremento.toFixed(1)}%). Revisa la factura.`
+            : `⚠️ ${data.proveedor} raised the price of "${data.producto}" from ${formatMoney(precioAnterior, lang)} to ${formatMoney(precioActual, lang)} (+${incremento.toFixed(1)}%). Check the invoice.`;
+          alertas.push({
+            tipo: 'SOBRECOSTO_PROVEEDOR',
+            gravedad: incremento > 15 ? 'ALTA' : incremento > 10 ? 'MEDIA' : 'BAJA',
+            proveedor: data.proveedor,
+            producto: data.producto,
+            precioAnterior: precioAnterior,
+            precioActual: precioActual,
+            incremento: incremento.toFixed(1),
+            mensaje: mensaje,
+            ahorroPotencial: (precioActual - precioAnterior) * (data.cantidades[data.cantidades.length - 1] || 1)
+          });
+        }
+      }
+    }
+  });
+  
+  const ahorroTotal = alertas.reduce((sum, a) => sum + (a.ahorroPotencial || 0), 0);
+  
+  const mensajeResumen = lang === 'es'
+    ? (alertas.length > 0 
+        ? `🔍 Se detectaron ${alertas.length} posibles sobrecostos. Ahorro potencial: ${formatMoney(ahorroTotal, lang)} COP.`
+        : '✅ No se detectaron sobrecostos en tus proveedores.')
+    : (alertas.length > 0
+        ? `🔍 ${alertas.length} possible overcosts detected. Potential savings: ${formatMoney(ahorroTotal, lang)} USD.`
+        : '✅ No overcosts detected in your suppliers.');
+  
+  return {
+    sobrecostos: alertas,
+    ahorroPotencial: ahorroTotal,
+    mensajeResumen: mensajeResumen
+  };
+};
+
+// ============================================================
+// ✅ EXPORTACIÓN NOMBRADA CORRECTA
+// ============================================================
 const logicEngine = {
     calcularUnitario,
     limpiarNumeroInternacional,
@@ -519,7 +823,8 @@ const logicEngine = {
     validarOperacion,
     categorizarGasto,
     auditarOperacion,
-    analizarSaludFinanciera  // ✅ NUEVA FUNCIÓN EXPORTADA
+    analizarSaludFinanciera,
+    auditarSobrecostosProveedores
 };
 
 export default logicEngine;
