@@ -134,7 +134,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
       }
       
       // ✅ GENERAR DICTAMEN ESPECIALIZADO
-      const hallazgos = generarDictamenEspecialista(resultado, configuracion);
+      const hallazgos = generarDictamenEspecialista(resultado, configuracion, idioma);
       resultado.hallazgosEspecialistas = hallazgos;
       
       setResultadoAuditoria(resultado);

@@ -137,9 +137,9 @@ const i18n = {
     switchToLogin: 'Inicia sesión aquí',
     plan: 'Plan',
     gratis: 'Gratis (15 días)',
-    pro: 'Plan 1',
-    business: 'Plan 2',
-    elite: 'Plan 3',
+    pro: 'Pro',
+    business: 'Business',
+    elite: 'Elite',
     loadingAuth: 'Cargando autenticación...',
     errorAuth: 'Error de autenticación',
     showPassword: 'Mostrar',
@@ -154,14 +154,14 @@ const i18n = {
     // Modal Upgrade
     upgradeTitle: 'Función no disponible',
     upgradeDescription: 'es exclusiva de los planes de pago',
-    upgradePro: 'Plan 1',
-    upgradeBusiness: 'Plan 2',
-    upgradeElite: 'Plan 3',
+    upgradePro: 'Pro',
+    upgradeBusiness: 'Business',
+    upgradeElite: 'Elite',
     upgradeButton: 'Ver Planes y Precios',
     starterPlan: 'Prueba 15 días',
-    plan1: 'Plan 1',
-    plan2: 'Plan 2',
-    plan3: 'Plan 3',
+    plan1: 'Pro',
+    plan2: 'Business',
+    plan3: 'Elite',
     // OCR
     procesandoOCR: 'Procesando factura con OCR...',
     escanearFactura: 'Escanear factura',
@@ -173,7 +173,64 @@ const i18n = {
     fechaVencimiento: 'Fecha de vencimiento',
     guardarConVencimiento: 'Guardar con vencimiento',
     saltarVencimiento: 'Saltar (sin vencimiento)',
-    producto: 'Producto'
+    producto: 'Producto',
+    cancelar: 'Cancelar',
+    // Sección Mi Plan Actual
+    miPlanActual: 'Mi Plan Actual',
+    gestionaSuscripcion: 'Gestiona tu suscripción',
+    cambiarPlan: 'Cambiar Plan',
+    escaneos: 'Escaneos',
+    dias: 'Días',
+    capitalInyectado: 'Capital Inyectado',
+    // Configuración de Auditoría
+    configuracionAuditoria: 'Configuración de Auditoría',
+    configurar: 'Configurar',
+    region: 'Región',
+    gastosFijos: 'Gastos Fijos Mensuales',
+    plataforma: 'Plataforma de venta principal',
+    guardar: 'Guardar Configuración',
+    pagar: 'Pagar',
+masPopular: 'Más popular',
+paquetesEscaneos: 'PAQUETES ADICIONALES DE ESCANEOS',
+paqueteBasico: 'Básico',
+paqueteFrecuente: 'Frecuente',
+paqueteProfesional: 'Profesional',
+paqueteCorporativo: 'Corporativo',
+paquetesNota: 'Los paquetes se compran dentro de la app y NO están incluidos en el plan mensual',
+plansStarterTagline: 'Consejero financiero de bolsillo',
+plansStarterFeature1: '10 escaneos/mes',
+plansStarterFeature2: 'Registro manual de movimientos',
+plansStarterFeature3: 'Dashboard financiero básico',
+plansStarterFeature4: 'Alertas de riesgo',
+plansStarterFeature5: 'Soporte IA 20 mensajes/mes',
+plansStarterFeature6: 'Sin reportes PDF',
+plansStarterFeature7: 'Sin exportar CSV',
+plansProTagline: 'Digitalización inteligente',
+plansProFeature1: '30 escaneos/mes',
+plansProFeature2: 'Registro manual ilimitado',
+plansProFeature3: 'Reportes PDF completos',
+plansProFeature4: 'Exportar CSV',
+plansProFeature5: 'Comparación mensual',
+plansProFeature6: 'Punto de equilibrio',
+plansProFeature7: 'Rotación de inventario',
+plansProFeature8: 'Soporte IA 50 mensajes/mes',
+plansBusinessTagline: 'Auditoría de sobrecostos',
+plansBusinessFeature1: '120 escaneos/mes',
+plansBusinessFeature2: 'Todo el plan Pro',
+plansBusinessFeature3: 'Auditoría forense de gastos',
+plansBusinessFeature4: 'Detección de sobrecostos de proveedores',
+plansBusinessFeature5: '3 usuarios incluidos',
+plansBusinessFeature6: 'Historial de eliminaciones',
+plansBusinessFeature7: 'Soporte IA 200 mensajes/mes',
+plansEliteTagline: 'Radar de quiebra',
+plansEliteFeature1: '300 escaneos/mes',
+plansEliteFeature2: 'Todo el plan Business',
+plansEliteFeature3: 'Radar de quiebra (90 días)',
+plansEliteFeature4: 'Alertas predictivas WhatsApp',
+plansEliteFeature5: 'Certificado Salud Financiera (QR)',
+plansEliteFeature6: '10 usuarios incluidos',
+plansEliteFeature7: 'Soporte IA 500 mensajes/mes',
+    cerrar: 'Cerrar'
   },
   en: {
     title: 'STRATIUM AI',
@@ -251,9 +308,9 @@ const i18n = {
     switchToLogin: 'Sign in here',
     plan: 'Plan',
     gratis: 'Free (15 days)',
-    pro: 'Plan 1',
-    business: 'Plan 2',
-    elite: 'Plan 3',
+    pro: 'Pro',
+    business: 'Business',
+    elite: 'Elite',
     loadingAuth: 'Loading authentication...',
     errorAuth: 'Authentication error',
     showPassword: 'Show',
@@ -268,14 +325,14 @@ const i18n = {
     // Modal Upgrade
     upgradeTitle: 'Feature not available',
     upgradeDescription: 'is exclusive to paid plans',
-    upgradePro: 'Plan 1',
-    upgradeBusiness: 'Plan 2',
-    upgradeElite: 'Plan 3',
+    upgradePro: 'Pro',
+    upgradeBusiness: 'Business',
+    upgradeElite: 'Elite',
     upgradeButton: 'View Plans and Pricing',
     starterPlan: '15-day Trial',
-    plan1: 'Plan 1',
-    plan2: 'Plan 2',
-    plan3: 'Plan 3',
+    plan1: 'Pro',
+    plan2: 'Business',
+    plan3: 'Elite',
     // OCR
     procesandoOCR: 'Processing invoice with OCR...',
     escanearFactura: 'Scan invoice',
@@ -287,7 +344,64 @@ const i18n = {
     fechaVencimiento: 'Expiration date',
     guardarConVencimiento: 'Save with expiration',
     saltarVencimiento: 'Skip (no expiration)',
-    producto: 'Product'
+    producto: 'Product',
+    cancelar: 'Cancel',
+    // Sección Mi Plan Actual
+    miPlanActual: 'My Current Plan',
+    gestionaSuscripcion: 'Manage your subscription',
+    cambiarPlan: 'Change Plan',
+    escaneos: 'Scans',
+    dias: 'Days',
+    capitalInyectado: 'Injected Capital',
+    // Configuración de Auditoría
+    configuracionAuditoria: 'Audit Configuration',
+    configurar: 'Configure',
+    region: 'Region',
+    gastosFijos: 'Monthly Fixed Expenses',
+    plataforma: 'Main selling platform',
+    guardar: 'Save Configuration',
+    pagar: 'Pay',
+masPopular: 'Most popular',
+paquetesEscaneos: 'ADDITIONAL SCAN PACKAGES',
+paqueteBasico: 'Basic',
+paqueteFrecuente: 'Frequent',
+paqueteProfesional: 'Professional',
+paqueteCorporativo: 'Corporate',
+paquetesNota: 'Packages are purchased inside the app and NOT included in the monthly plan',
+plansStarterTagline: 'Pocket financial advisor',
+plansStarterFeature1: '10 scans/month',
+plansStarterFeature2: 'Manual transaction entry',
+plansStarterFeature3: 'Basic financial dashboard',
+plansStarterFeature4: 'Risk alerts',
+plansStarterFeature5: 'AI support 20 messages/month',
+plansStarterFeature6: 'No PDF reports',
+plansStarterFeature7: 'No CSV export',
+plansProTagline: 'Smart digitization',
+plansProFeature1: '30 scans/month',
+plansProFeature2: 'Unlimited manual entry',
+plansProFeature3: 'Complete PDF reports',
+plansProFeature4: 'CSV export',
+plansProFeature5: 'Monthly comparison',
+plansProFeature6: 'Break-even point',
+plansProFeature7: 'Inventory turnover',
+plansProFeature8: 'AI support 50 messages/month',
+plansBusinessTagline: 'Overcost audit',
+plansBusinessFeature1: '120 scans/month',
+plansBusinessFeature2: 'Everything in Pro',
+plansBusinessFeature3: 'Forensic expense audit',
+plansBusinessFeature4: 'Supplier overcost detection',
+plansBusinessFeature5: '3 users included',
+plansBusinessFeature6: 'Deletion history',
+plansBusinessFeature7: 'AI support 200 messages/month',
+plansEliteTagline: 'Bankruptcy radar',
+plansEliteFeature1: '300 scans/month',
+plansEliteFeature2: 'Everything in Business',
+plansEliteFeature3: 'Bankruptcy radar (90 days)',
+plansEliteFeature4: 'Predictive WhatsApp alerts',
+plansEliteFeature5: 'Financial Health Certificate (QR)',
+plansEliteFeature6: '10 users included',
+plansEliteFeature7: 'AI support 500 messages/month',
+    cerrar: 'Close'
   }
 };
 
@@ -665,126 +779,135 @@ const PantallaLogin = ({
           </div>
           
           {esRegistro && (
-            <>
-              <div className="mb-4">
-                <label className="block text-gray-400 text-sm mb-2">{t.confirmPassword}</label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 pr-20"
-                    required
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-cyan-400 text-sm hover:text-cyan-300 px-2 py-1"
-                  >
-                    {showConfirmPassword ? t.hidePassword : t.showPassword}
-                  </button>
-                </div>
-                {confirmPassword && passwordLogin !== confirmPassword && (
-                  <p className="text-red-400 text-xs mt-1">{t.passwordsDontMatch}</p>
-                )}
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-400 text-sm mb-2">{t.nombre}</label>
-                <input
-                  type="text"
-                  value={nombreRegistro}
-                  onChange={(e) => setNombreRegistro(e.target.value)}
-                  className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  autoComplete="name"
-                />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-400 text-sm mb-2">{t.plan}</label>
-                <div className="grid grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPlanSeleccionado('gratis')}
-                    className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                      planSeleccionado === 'gratis'
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    {t.gratis}
-                    <span className="block text-[10px] opacity-80">$0</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlanSeleccionado('pro')}
-                    className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                      planSeleccionado === 'pro'
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    {t.pro}
-                    <span className="block text-[10px] opacity-80">
-                      {moneda.mostrarCOP ? '$59,900/mes' : '$19.99/mes'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlanSeleccionado('business')}
-                    className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                      planSeleccionado === 'business'
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    {t.business}
-                    <span className="block text-[10px] opacity-80">
-                      {moneda.mostrarCOP ? '$99,900/mes' : '$49.99/mes'}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPlanSeleccionado('elite')}
-                    className={`p-2 rounded-lg text-sm font-bold transition-all ${
-                      planSeleccionado === 'elite'
-                        ? 'bg-cyan-500 text-white'
-                        : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
-                    }`}
-                  >
-                    {t.elite}
-                    <span className="block text-[10px] opacity-80">
-                      {moneda.mostrarCOP ? '$199,900/mes' : '$99.90/mes'}
-                    </span>
-                  </button>
-                </div>
-              </div>
+  <>
+    <div className="mb-4">
+      <label className="block text-gray-400 text-sm mb-2">{t.confirmPassword}</label>
+      <div className="relative">
+        <input
+          type={showConfirmPassword ? "text" : "password"}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 pr-20"
+          required
+          autoComplete="new-password"
+        />
+        <button
+          type="button"
+          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-cyan-400 text-sm hover:text-cyan-300 px-2 py-1"
+        >
+          {showConfirmPassword ? t.hidePassword : t.showPassword}
+        </button>
+      </div>
+      {confirmPassword && passwordLogin !== confirmPassword && (
+        <p className="text-red-400 text-xs mt-1">{t.passwordsDontMatch}</p>
+      )}
+    </div>
+    
+    <div className="mb-4">
+      <label className="block text-gray-400 text-sm mb-2">{t.nombre}</label>
+      <input
+        type="text"
+        value={nombreRegistro}
+        onChange={(e) => setNombreRegistro(e.target.value)}
+        className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+        autoComplete="name"
+      />
+    </div>
+    
+    <div className="mb-4">
+      <label className="block text-gray-400 text-sm mb-2">{t.plan}</label>
+      <div className="grid grid-cols-4 gap-2">
+        {/* Plan Starter */}
+        <button
+          type="button"
+          onClick={() => setPlanSeleccionado('gratis')}
+          className={`p-2 rounded-lg text-sm font-bold transition-all ${
+            planSeleccionado === 'gratis'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
+          }`}
+        >
+          Starter
+          <span className="block text-[10px] opacity-80">
+            {moneda.mostrarCOP ? '$0 / 15 días' : '$0 / 15 days'}
+          </span>
+        </button>
+        
+        {/* Plan Pro */}
+        <button
+          type="button"
+          onClick={() => setPlanSeleccionado('pro')}
+          className={`p-2 rounded-lg text-sm font-bold transition-all ${
+            planSeleccionado === 'pro'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
+          }`}
+        >
+          Pro
+          <span className="block text-[10px] opacity-80">
+            {moneda.mostrarCOP ? '$79,900/mes' : '$29.99/mes'}
+          </span>
+        </button>
+        
+        {/* Plan Business */}
+        <button
+          type="button"
+          onClick={() => setPlanSeleccionado('business')}
+          className={`p-2 rounded-lg text-sm font-bold transition-all ${
+            planSeleccionado === 'business'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
+          }`}
+        >
+          Business
+          <span className="block text-[10px] opacity-80">
+            {moneda.mostrarCOP ? '$199,900/mes' : '$79.99/mes'}
+          </span>
+        </button>
+        
+        {/* Plan Elite */}
+        <button
+          type="button"
+          onClick={() => setPlanSeleccionado('elite')}
+          className={`p-2 rounded-lg text-sm font-bold transition-all ${
+            planSeleccionado === 'elite'
+              ? 'bg-cyan-500 text-white'
+              : 'bg-slate-800 text-gray-400 hover:bg-slate-700'
+          }`}
+        >
+          Elite
+          <span className="block text-[10px] opacity-80">
+            {moneda.mostrarCOP ? '$499,900/mes' : '$199.99/mes'}
+          </span>
+        </button>
+      </div>
+    </div>
 
-              {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
-              <div className="mb-4">
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={aceptaTerminos}
-                    onChange={(e) => setAceptaTerminos(e.target.checked)}
-                    className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
-                    required
-                  />
-                  <span className="text-gray-400 text-xs">
-                    {t.aceptarTerminos} 
-                    <a 
-                      href={idioma === 'es' ? '/terminos.html' : '/terms.html'} 
-                      target="_blank" 
-                      className="text-cyan-400 hover:underline ml-1"
-                    >
-                      {t.terminosLink}
-                    </a>
-                  </span>
-                </label>
-              </div>
-            </>
-          )}
+    {/* CHECKBOX DE TÉRMINOS Y CONDICIONES */}
+    <div className="mb-4">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={aceptaTerminos}
+          onChange={(e) => setAceptaTerminos(e.target.checked)}
+          className="mt-1 w-4 h-4 rounded border-blue-900/20 bg-[#0f172a] text-cyan-500 focus:ring-cyan-500 focus:ring-2"
+          required
+        />
+        <span className="text-gray-400 text-xs">
+          {t.aceptarTerminos} 
+          <a 
+            href={idioma === 'es' ? '/terminos.html' : '/terms.html'} 
+            target="_blank" 
+            className="text-cyan-400 hover:underline ml-1"
+          >
+            {t.terminosLink}
+          </a>
+        </span>
+      </label>
+    </div>
+  </>
+)}
           
           <button
             type="submit"
@@ -1665,8 +1788,8 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
   const margenCalc = ventasTotales > 0 ? ((saldo / ventasTotales) * 100).toFixed(1) : 0;
   
   const formatearValorLocal = (valor) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency', currency: 'COP',
+    return new Intl.NumberFormat(idioma === 'es' ? 'es-CO' : 'en-US', {
+      style: 'currency', currency: idioma === 'es' ? 'COP' : 'USD',
       minimumFractionDigits: 0, maximumFractionDigits: 0
     }).format(Math.abs(valor));
   };
@@ -1674,17 +1797,19 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
   let textoDictamen = '';
   
   if (movimientosMes.length === 0) {
-    textoDictamen = 'No hay transacciones en el periodo actual. Comienza a registrar tus operaciones para obtener un análisis financiero.';
+    textoDictamen = idioma === 'es' 
+      ? 'No hay transacciones en el periodo actual. Comienza a registrar tus operaciones para obtener un análisis financiero.'
+      : 'No transactions in the current period. Start recording your operations to get a financial analysis.';
   } else {
-    // Versión corta para plan Free/Starter
     if (!esPlanPago) {
-      textoDictamen = `📊 REPORTE EJECUTIVO\n━━━━━━━━━━━━━━━━━━━━━\n`;
-      textoDictamen += `📈 Ventas: ${formatearValorLocal(ventasTotales)}\n`;
-      textoDictamen += `📉 Gastos: ${formatearValorLocal(comprasTotales)}\n`;
-      textoDictamen += `💰 Utilidad: ${formatearValorLocal(saldo)}\n`;
-      textoDictamen += `📊 Margen: ${margenCalc}%\n\n`;
+      textoDictamen = idioma === 'es' 
+        ? '📊 REPORTE EJECUTIVO\n━━━━━━━━━━━━━━━━━━━━━\n'
+        : '📊 EXECUTIVE REPORT\n━━━━━━━━━━━━━━━━━━━━━\n';
+      textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
+      textoDictamen += (idioma === 'es' ? '📉 Gastos: ' : '📉 Expenses: ') + `${formatearValorLocal(comprasTotales)}\n`;
+      textoDictamen += (idioma === 'es' ? '💰 Utilidad: ' : '💰 Profit: ') + `${formatearValorLocal(saldo)}\n`;
+      textoDictamen += (idioma === 'es' ? '📊 Margen: ' : '📊 Margin: ') + `${margenCalc}%\n\n`;
       
-      // Detectar productos con +180 días sin rotación
       const productosLentos = inventario.filter(item => {
         if (!item.producto || item.cantidad <= 0) return false;
         const ventasProducto = movimientosMes.filter(m => 
@@ -1698,36 +1823,46 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
       });
       
       if (productosLentos.length > 0) {
-        textoDictamen += `⚠️ ALERTA DE INVENTARIO:\n`;
+        textoDictamen += (idioma === 'es' ? '⚠️ ALERTA DE INVENTARIO:\n' : '⚠️ INVENTORY ALERT:\n');
         productosLentos.slice(0, 3).forEach(p => {
-          textoDictamen += `   • ${p.producto}: ${p.cantidad} unidades sin rotación\n`;
+          textoDictamen += `   • ${p.producto}: ${p.cantidad} ${idioma === 'es' ? 'unidades sin rotación' : 'units without rotation'}\n`;
         });
-        textoDictamen += `\n💡 Actualiza a Plan Business para análisis detallado y precios sugeridos.\n`;
+        textoDictamen += `\n💡 ${idioma === 'es' ? 'Actualiza a Plan Business para análisis detallado y precios sugeridos.' : 'Upgrade to Business Plan for detailed analysis and suggested prices.'}\n`;
       }
     } else {
-      // Versión completa para planes de pago
-      textoDictamen = `📊 ANALISIS FINANCIERO DETALLADO\n━━━━━━━━━━━━━━━━━━━━━\n`;
-      textoDictamen += `Período: ${obtenerPrimerDiaMes()} al ${obtenerFechaActual()}\n`;
-      textoDictamen += `📈 Ventas: ${formatearValorLocal(ventasTotales)}\n`;
-      textoDictamen += `📉 Gastos: ${formatearValorLocal(comprasTotales)}\n`;
-      textoDictamen += `💰 Utilidad Neta: ${formatearValorLocal(saldo)}\n`;
-      textoDictamen += `📊 Margen Neto: ${margenCalc}%\n`;
-      textoDictamen += `💵 Capital Inyectado: ${formatearValorLocal(usuarioActual?.aportesPersonales || 0)}\n`;
-      textoDictamen += `🏦 Deuda con Dueño: ${formatearValorLocal(usuarioActual?.deudaConDueño || 0)}\n\n`;
+      // Versión completa para planes de pago (también traducida)
+      textoDictamen = idioma === 'es'
+        ? '📊 ANALISIS FINANCIERO DETALLADO\n━━━━━━━━━━━━━━━━━━━━━\n'
+        : '📊 DETAILED FINANCIAL ANALYSIS\n━━━━━━━━━━━━━━━━━━━━━\n';
+      textoDictamen += (idioma === 'es' ? `Período: ${obtenerPrimerDiaMes()} al ${obtenerFechaActual()}\n` : `Period: ${obtenerPrimerDiaMes()} to ${obtenerFechaActual()}\n`);
+      textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
+      textoDictamen += (idioma === 'es' ? '📉 Gastos: ' : '📉 Expenses: ') + `${formatearValorLocal(comprasTotales)}\n`;
+      textoDictamen += (idioma === 'es' ? '💰 Utilidad Neta: ' : '💰 Net Profit: ') + `${formatearValorLocal(saldo)}\n`;
+      textoDictamen += (idioma === 'es' ? '📊 Margen Neto: ' : '📊 Net Margin: ') + `${margenCalc}%\n`;
+      textoDictamen += (idioma === 'es' ? '💵 Capital Inyectado: ' : '💵 Injected Capital: ') + `${formatearValorLocal(usuarioActual?.aportesPersonales || 0)}\n`;
+      textoDictamen += (idioma === 'es' ? '🏦 Deuda con Dueño: ' : '🏦 Debt to Owner: ') + `${formatearValorLocal(usuarioActual?.deudaConDueño || 0)}\n\n`;
       
       if (saldo < 0) {
-        textoDictamen += `⚠️ ALERTA: El saldo es negativo. Tus gastos superan tus ingresos.\n`;
-        textoDictamen += `💡 Revisa la sección de "Alertas" para recomendaciones específicas.\n`;
+        textoDictamen += (idioma === 'es' 
+          ? '⚠️ ALERTA: El saldo es negativo. Tus gastos superan tus ingresos.\n'
+          : '⚠️ ALERT: Balance is negative. Your expenses exceed your income.\n');
+        textoDictamen += (idioma === 'es'
+          ? '💡 Revisa la sección de "Alertas" para recomendaciones específicas.\n'
+          : '💡 Check the "Alerts" section for specific recommendations.\n');
       } else if (saldo > 0 && margenCalc > 25) {
-        textoDictamen += `✅ Excelente rentabilidad. Mantén la estrategia actual.\n`;
+        textoDictamen += (idioma === 'es'
+          ? '✅ Excelente rentabilidad. Mantén la estrategia actual.\n'
+          : '✅ Excellent profitability. Maintain current strategy.\n');
       } else {
-        textoDictamen += `📢 La operación es estable. Monitorea tus indicadores clave.\n`;
+        textoDictamen += (idioma === 'es'
+          ? '📢 La operación es estable. Monitorea tus indicadores clave.\n'
+          : '📢 Operations are stable. Monitor your key indicators.\n');
       }
     }
   }
   
   setDictamenGeneral(textoDictamen);
-}, [obtenerFechaLimiteHistorial, obtenerPrimerDiaMes, obtenerFechaActual, inventario, usuarioActual]);
+}, [obtenerFechaLimiteHistorial, obtenerPrimerDiaMes, obtenerFechaActual, inventario, usuarioActual, idioma]);
 
   // ============================================================
   // REGISTRAR COMPRA CON FECHA DE VENCIMIENTO (NUEVO)
@@ -3123,8 +3258,14 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => 
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
-      <div className="bg-[#1e293b] rounded-2xl p-6 max-w-4xl w-full border border-blue-900/30 shadow-2xl">
+    <div 
+      className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-[#1e293b] rounded-2xl p-6 max-w-4xl w-full border border-blue-900/30 shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="text-center mb-4">
           <div className="text-5xl mb-3">🔒</div>
           <h3 className="text-xl font-bold text-white">{t.upgradeTitle}</h3>
@@ -3135,111 +3276,140 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => 
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           
-          {/* PLAN STARTER - NUEVO */}
+          {/* PLAN STARTER */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-green-500/30">
             <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-green-400">Plan Starter</h4>
+              <h4 className="text-xl font-bold text-green-400">Starter</h4>
               <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$29,900' : '$9.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-green-400 mt-1">🎣 Ingreso manual</p>
+              <p className="text-xs text-green-400 mt-1">{t.plansStarterTagline || 'Consejero financiero de bolsillo'}</p>
             </div>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-green-400">✓</span> 0 escaneos OCR (ingreso manual)</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> 10 análisis IA/mes</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> 1 usuario</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Dashboard básico</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Alertas de riesgo</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin escaneo de facturas</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin reportes PDF</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature1 || '10 escaneos/mes'}</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature2 || 'Registro manual de movimientos'}</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature3 || 'Dashboard financiero básico'}</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature4 || 'Alertas de riesgo'}</p>
+              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature5 || 'Soporte IA 20 mensajes/mes'}</p>
+              <p className="text-gray-400"><span className="text-green-400">✗</span> {t.plansStarterFeature6 || 'Sin reportes PDF'}</p>
+              <p className="text-gray-400"><span className="text-green-400">✗</span> {t.plansStarterFeature7 || 'Sin exportar CSV'}</p>
             </div>
             <button
               onClick={() => onSeleccionarPlan('starter')}
               className="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
             >
-              Pagar {moneda.mostrarCOP ? '$29,900' : '$9.99'}
+              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$29,900' : '$9.99'}
             </button>
           </div>
           
-          {/* PLAN PRO - ACTUALIZADO */}
+          {/* PLAN PRO */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-cyan-500/30">
             <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-cyan-400">Plan Pro</h4>
+              <h4 className="text-xl font-bold text-cyan-400">Pro</h4>
               <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$79,900' : '$29.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-cyan-400 mt-1">🎯 Digitalización inteligente</p>
+              <p className="text-xs text-cyan-400 mt-1">{t.plansProTagline || 'Digitalización inteligente'}</p>
             </div>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> 30 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> 1 usuario</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Dashboard financiero</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Reportes PDF básicos</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Exportar CSV</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Alertas de flujo de caja</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Módulo de inventario y producción</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature1 || '30 escaneos/mes'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature2 || 'Registro manual ilimitado'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature3 || 'Reportes PDF completos'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature4 || 'Exportar CSV'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature5 || 'Comparación mensual'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature6 || 'Punto de equilibrio'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature7 || 'Rotación de inventario'}</p>
+              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature8 || 'Soporte IA 50 mensajes/mes'}</p>
             </div>
             <button
               onClick={() => onSeleccionarPlan('pro')}
               className="w-full mt-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
             >
-              Pagar {moneda.mostrarCOP ? '$79,900' : '$29.99'}
+              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$79,900' : '$29.99'}
             </button>
           </div>
           
-          {/* PLAN BUSINESS - ACTUALIZADO (120 escaneos) */}
+          {/* PLAN BUSINESS */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-purple-500/30 relative">
             <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full">
-              Más popular
+              {t.masPopular || 'Más popular'}
             </div>
             <div className="text-center mb-3 mt-2">
-              <h4 className="text-xl font-bold text-purple-400">Plan Business</h4>
+              <h4 className="text-xl font-bold text-purple-400">Business</h4>
               <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$199,900' : '$79.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-purple-400 mt-1">💰 Auditoría de sobrecostos</p>
+              <p className="text-xs text-purple-400 mt-1">{t.plansBusinessTagline || 'Auditoría de sobrecostos'}</p>
             </div>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> 120 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> 3 usuarios</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Todo del Pro</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> <strong>Auditoría forense de gastos</strong></p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> <strong>Detección de sobrecostos de proveedores</strong></p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Reportes PDF avanzados</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Punto de equilibrio y rotación de inventario</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature1 || '120 escaneos/mes'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature2 || 'Todo el plan Pro'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature3 || 'Auditoría forense de gastos'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature4 || 'Detección de sobrecostos de proveedores'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature5 || '3 usuarios incluidos'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature6 || 'Historial de eliminaciones'}</p>
+              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature7 || 'Soporte IA 200 mensajes/mes'}</p>
             </div>
             <button
               onClick={() => onSeleccionarPlan('business')}
               className="w-full mt-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
             >
-              Pagar {moneda.mostrarCOP ? '$199,900' : '$79.99'}
+              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$199,900' : '$79.99'}
             </button>
           </div>
           
-          {/* PLAN ELITE - ACTUALIZADO (300 escaneos) */}
+          {/* PLAN ELITE */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-yellow-500/30">
             <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-yellow-400">Plan Elite</h4>
+              <h4 className="text-xl font-bold text-yellow-400">Elite</h4>
               <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$499,900' : '$199.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-yellow-400 mt-1">🛡️ Radar de quiebra</p>
+              <p className="text-xs text-yellow-400 mt-1">{t.plansEliteTagline || 'Radar de quiebra'}</p>
             </div>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 300 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 10 usuarios</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Todo del Business</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Radar de quiebra (90 días)</strong></p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Alertas predictivas por WhatsApp</strong></p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> <strong>Certificación de Salud Financiera (QR)</strong></p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Soporte prioritario (4h)</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature1 || '300 escaneos/mes'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature2 || 'Todo el plan Business'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature3 || 'Radar de quiebra (90 días)'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature4 || 'Alertas predictivas WhatsApp'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature5 || 'Certificado Salud Financiera (QR)'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature6 || '10 usuarios incluidos'}</p>
+              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature7 || 'Soporte IA 500 mensajes/mes'}</p>
             </div>
             <button
               onClick={() => onSeleccionarPlan('elite')}
               className="w-full mt-4 bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
             >
-              Pagar {moneda.mostrarCOP ? '$499,900' : '$199.99'}
+              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$499,900' : '$199.99'}
             </button>
           </div>
         </div>
         
+        {/* PAQUETES ADICIONALES DE ESCANEOS */}
+        <div className="mt-4 p-3 bg-slate-800/30 rounded-lg">
+          <p className="text-gray-400 text-xs mb-2 text-center">📦 {t.paquetesEscaneos || 'PAQUETES ADICIONALES DE ESCANEOS'}</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <div className="bg-slate-800/50 p-2 rounded text-center">
+              <p className="text-cyan-400 font-bold">{t.paqueteBasico || 'Básico'}</p>
+              <p>{moneda.mostrarCOP ? '$19,900' : '$9.99'}</p>
+              <p className="text-gray-500">+10 {t.escaneos || 'escaneos'}</p>
+            </div>
+            <div className="bg-slate-800/50 p-2 rounded text-center">
+              <p className="text-cyan-400 font-bold">{t.paqueteFrecuente || 'Frecuente'}</p>
+              <p>{moneda.mostrarCOP ? '$49,900' : '$19.99'}</p>
+              <p className="text-gray-500">+30 {t.escaneos || 'escaneos'}</p>
+            </div>
+            <div className="bg-slate-800/50 p-2 rounded text-center">
+              <p className="text-cyan-400 font-bold">{t.paqueteProfesional || 'Profesional'}</p>
+              <p>{moneda.mostrarCOP ? '$99,900' : '$39.99'}</p>
+              <p className="text-gray-500">+100 {t.escaneos || 'escaneos'}</p>
+            </div>
+            <div className="bg-slate-800/50 p-2 rounded text-center">
+              <p className="text-cyan-400 font-bold">{t.paqueteCorporativo || 'Corporativo'}</p>
+              <p>{moneda.mostrarCOP ? '$199,900' : '$79.99'}</p>
+              <p className="text-gray-500">+300 {t.escaneos || 'escaneos'}</p>
+            </div>
+          </div>
+          <p className="text-gray-500 text-xs mt-2 text-center">💡 {t.paquetesNota || 'Los paquetes se compran dentro de la app y NO están incluidos en el plan mensual'}</p>
+        </div>
+        
         <button
           onClick={onClose}
-          className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
+          className="w-full mt-4 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
         >
-          Cancelar
+          {t.cancelar || 'Cancelar'}
         </button>
       </div>
     </div>
@@ -3751,9 +3921,9 @@ const datosGrafico = [
             <button
   onClick={() => {
     if (puedeAccederAFuncion('puedeGenerarPDF')) {
-      generarReportePDF(false);  // Versión completa para planes de pago
+      generarReportePDF(false);
     } else {
-      generarReportePreview();   // Versión corta para plan Free/Starter
+      generarReportePreview();
     }
   }}
   disabled={generandoReporte || movimientos.length === 0}
@@ -3907,7 +4077,7 @@ const datosGrafico = [
               </div>
             )}
 
-                        {/* KPI Cards */}
+            {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
               <div className="bg-[#1e293b] border border-blue-900/20 rounded-xl p-5 shadow-lg hover:border-cyan-500/30 transition-all duration-300">
                 <div className="flex justify-between items-start">
@@ -3993,17 +4163,67 @@ const datosGrafico = [
               </div>
             </div>
 
+                                   {/* SECCIÓN MI PLAN - VERSIÓN REDUCIDA Y COMPACTA */}
+            <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 rounded-2xl p-4 mb-6 border border-blue-500/30">
+              <div className="flex flex-row justify-between items-center gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span>🎯</span> {t.miPlanActual || 'Mi Plan Actual'}
+                  </h3>
+                  <p className="text-gray-400 text-xs">{t.gestionaSuscripcion || 'Gestiona tu suscripción'}</p>
+                </div>
+                <button
+                  onClick={() => setModalUpgradeOpen(true)}
+                  className="px-4 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 rounded-lg text-cyan-400 font-medium transition-all text-xs"
+                >
+                  {t.cambiarPlan || 'Cambiar Plan'}
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
+                <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+                  <p className="text-gray-400 text-[10px] uppercase">{t.plan || 'Plan'}</p>
+                  <p className="text-sm font-bold text-white">
+                    {usuarioActual?.plan === 'gratis' ? 'Starter' :
+                     usuarioActual?.plan === 'pro' ? 'Pro' :
+                     usuarioActual?.plan === 'business' ? 'Business' : 'Elite'}
+                  </p>
+                </div>
+                
+                <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+                  <p className="text-gray-400 text-[10px] uppercase">{t.escaneos || 'Escaneos'}</p>
+                  <p className="text-sm font-bold text-white">
+                    {usuarioActual?.plan === 'elite' 
+                      ? `${(usuarioActual?.creditosOCR || 300) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 300}`
+                      : `${(usuarioActual?.creditosOCR || 0) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 0}`}
+                  </p>
+                </div>
+                
+                <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+                  <p className="text-gray-400 text-[10px] uppercase">{t.dias || 'Días'}</p>
+                  <p className="text-sm font-bold text-white">
+                    {(() => {
+                      if (!usuarioActual?.fechaVencimiento) return '∞';
+                      const fechaVenc = usuarioActual.fechaVencimiento?.toDate ? 
+                        usuarioActual.fechaVencimiento.toDate() : new Date(usuarioActual.fechaVencimiento);
+                      const diasRestantes = Math.ceil((fechaVenc - new Date()) / (1000 * 60 * 60 * 24));
+                      if (diasRestantes <= 0) return '0';
+                      return diasRestantes;
+                    })()}
+                  </p>
+                </div>
+                
+                <div className="bg-slate-800/50 rounded-lg p-2 text-center col-span-2">
+                  <p className="text-gray-400 text-[10px] uppercase">{t.capitalInyectado || 'Capital Inyectado'}</p>
+                  <p className={`text-sm font-bold ${(usuarioActual?.deudaConDueño || 0) > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {formatearValor(usuarioActual?.deudaConDueño || 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* SECCIÓN CONFIGURACIÓN DE AUDITORÍA */}
             <ConfiguracionAuditoria usuarioActual={usuarioActual} idioma={idioma} />
-
-            {/* Capital Inyectado (Deuda) */}
-            <div className="bg-slate-800/50 rounded-xl p-4 mb-8">
-              <p className="text-gray-400 text-xs uppercase mb-1">Capital Inyectado (Deuda)</p>
-              <p className={`text-xl font-bold ${(usuarioActual?.deudaConDueño || 0) > 0 ? 'text-yellow-400' : 'text-green-400'}`}>
-                {formatearValor(usuarioActual?.deudaConDueño || 0)}
-              </p>
-              <p className="text-gray-400 text-xs mt-1">El negocio te debe esto</p>
-            </div>
 
             {/* PANEL DE ADMINISTRACIÓN */}
             {/* <AdminPanel usuarioActual={usuarioActual} /> */}
@@ -4494,5 +4714,4 @@ const datosGrafico = [
 };
 
 export default App;
-
 
