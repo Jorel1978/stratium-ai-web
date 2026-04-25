@@ -1,0 +1,400 @@
+// ============================================================
+// INTERNACIONALIZACIÓN COMPLETA (EXTRAÍDA DE App.js)
+// ============================================================
+
+export const i18n = {
+  es: {
+    // Generales
+    title: 'STRATIUM AI',
+    subtitle: 'Especialista en Optimización de Costos y Auditoría Financiera con IA',
+    ventas: 'Ventas (Mes)',
+    utilidad: 'Utilidad Estimada',
+    margen: 'Margen',
+    saldo: 'Saldo en Caja',
+    analizar: 'Analizar',
+    reporte: 'Reporte PDF',
+    adjuntar: 'Adjuntar',
+    produccion: 'Cálculo de Producción',
+    dictamen: 'Dictamen de Auditoría',
+    registros: 'Registros Financieros',
+    ejemplo: 'Ej: "Compra 10 gorras por 125.000" o "Genera: Reporte"',
+    salud: 'Termómetro de Salud',
+    ingresosVsEgresos: 'Ingresos vs Egresos',
+    alertas: 'Alertas del Sargento Financiero',
+    recomendaciones: 'Recomendaciones Estratégicas',
+    conectar: 'Conectando...',
+    enLinea: 'En línea',
+    adjuntando: 'Adjuntando...',
+    generando: 'Generando...',
+    idioma: 'Idioma',
+    español: 'Español',
+    ingles: 'English',
+    
+    // Producción
+    material: 'Costo de Materiales',
+    horas: 'Horas de Trabajo',
+    valorHora: 'Valor Hora',
+    transporte: 'Gastos de Transporte',
+    precioVenta: 'Precio de Venta',
+    productoNombre: 'Nombre del Producto',
+    costoUnitario: 'Costo Unitario',
+    precioSugerido: 'Precio Sugerido (30%)',
+    calcular: 'Calculando...',
+    cargarInventario: 'Cargar a Inventario',
+    alertaProduccion: '⚠️ ALERTA: Producción a pérdida. Costo unitario supera el precio de venta. Revisa costos.',
+    
+    // Salud financiera
+    oxigeno: 'Oxígeno financiero',
+    saludExcelente: 'Excelente',
+    saludEstable: 'Estable',
+    saludCritico: 'Crítico',
+    sinDatos: 'Sin datos',
+    verHistorial: 'Ver historial completo',
+    totalTransacciones: 'transacciones',
+    
+    // Tooltips
+    tooltipVentas: 'Total de ingresos por ventas en el mes actual',
+    tooltipUtilidad: 'Ingresos menos gastos del período',
+    tooltipMargen: 'Porcentaje de utilidad sobre ventas',
+    tooltipSaldo: 'Saldo histórico acumulado (ingresos - egresos)',
+    tooltipOxigeno: 'Días que puedes operar con el saldo actual sin nuevos ingresos',
+    tooltipProductoHueso: 'Producto sin ventas en más de 15 días - recomendación: liquidar con descuento',
+    tooltipMargenBajo: 'Margen inferior al 20% - riesgo en dropshipping si hay devoluciones',
+    tooltipEstrella: 'Producto con mayor facturación del período',
+    tooltipQuiebra: 'Alerta de flujo de caja - acción inmediata requerida',
+    tooltipSalud: 'Indicador de salud financiera basado en margen neto',
+    tooltipTermometro: 'Barra de salud: >30% Excelente, 15-30% Estable, <15% Crítico',
+    
+    // Comparación mensual
+    variacionVentas: 'vs mes anterior',
+    crecimiento: 'Crecimiento',
+    decrecimiento: 'Decrecimiento',
+    puntoEquilibrio: 'Punto de Equilibrio',
+    puntoEquilibrioDesc: 'Ventas necesarias para cubrir costos fijos',
+    alertaPuntoEquilibrio: '⚠️ Estás por debajo del punto de equilibrio. Necesitas vender más para cubrir costos fijos.',
+    
+    // Login y Autenticación
+    loginTitle: 'Bienvenido a STRATIUM AI',
+    loginSubtitle: 'Tu asistente financiero con IA',
+    email: 'Correo electrónico',
+    password: 'Contraseña',
+    confirmPassword: 'Confirmar Contraseña',
+    nombre: 'Nombre (opcional)',
+    login: 'Iniciar Sesión',
+    register: 'Registrarse',
+    logout: 'Cerrar Sesión',
+    noAccount: '¿No tienes cuenta?',
+    hasAccount: '¿Ya tienes cuenta?',
+    switchToRegister: 'Regístrate aquí',
+    switchToLogin: 'Inicia sesión aquí',
+    plan: 'Plan',
+    gratis: 'Gratis (15 días)',
+    pro: 'Pro',
+    business: 'Business',
+    elite: 'Elite',
+    loadingAuth: 'Cargando autenticación...',
+    errorAuth: 'Error de autenticación',
+    showPassword: 'Mostrar',
+    hidePassword: 'Ocultar',
+    passwordsDontMatch: 'Las contraseñas no coinciden',
+    
+    // Auditoría y Anomalías
+    alertaValorAtipico: '⚠️ Gasto atípico detectado',
+    alertaValorAtipicoDesc: 'Este gasto supera significativamente tu promedio. ¿Es correcto?',
+    alertaInconsistenciaSaldo: '⚠️ Inconsistencia en saldo contable',
+    alertaInconsistenciaSaldoDesc: 'El saldo calculado no coincide con la suma de movimientos. Revisa los registros.',
+    verLogsEliminaciones: 'Ver historial de eliminaciones',
+    
+    // Modal Upgrade
+    upgradeTitle: 'Función no disponible',
+    upgradeDescription: 'es exclusiva de los planes de pago',
+    upgradePro: 'Pro',
+    upgradeBusiness: 'Business',
+    upgradeElite: 'Elite',
+    upgradeButton: 'Ver Planes y Precios',
+    starterPlan: 'Prueba 15 días',
+    plan1: 'Pro',
+    plan2: 'Business',
+    plan3: 'Elite',
+    
+    // OCR y Escaneos
+    procesandoOCR: 'Procesando factura con OCR...',
+    escanearFactura: 'Escanear factura',
+    
+    // Términos y condiciones
+    aceptarTerminos: 'Acepto los Términos y Condiciones y autorizo el tratamiento de mis datos personales.',
+    terminosLink: 'Términos y Condiciones',
+    
+    // Fechas de vencimiento
+    preguntarVencimiento: '¿Registrar fecha de vencimiento?',
+    fechaVencimiento: 'Fecha de vencimiento',
+    guardarConVencimiento: 'Guardar con vencimiento',
+    saltarVencimiento: 'Saltar (sin vencimiento)',
+    producto: 'Producto',
+    cancelar: 'Cancelar',
+    
+    // Sección Mi Plan Actual
+    miPlanActual: 'Mi Plan Actual',
+    gestionaSuscripcion: 'Gestiona tu suscripción',
+    cambiarPlan: 'Cambiar Plan',
+    escaneos: 'Escaneos',
+    dias: 'Días',
+    capitalInyectado: 'Capital Inyectado',
+    
+    // Configuración de Auditoría
+    configuracionAuditoria: 'Configuración de Auditoría',
+    configurar: 'Configurar',
+    region: 'Región',
+    gastosFijos: 'Gastos Fijos Mensuales',
+    plataforma: 'Plataforma de venta principal',
+    guardar: 'Guardar Configuración',
+    pagar: 'Pagar',
+    masPopular: 'Más popular',
+    
+    // Paquetes de escaneos
+    paquetesEscaneos: 'PAQUETES ADICIONALES DE ESCANEOS',
+    paqueteBasico: 'Básico',
+    paqueteFrecuente: 'Frecuente',
+    paqueteProfesional: 'Profesional',
+    paqueteCorporativo: 'Corporativo',
+    paquetesNota: 'Los paquetes se compran dentro de la app y NO están incluidos en el plan mensual',
+    
+    // Planes descriptivos
+    plansStarterTagline: 'Consejero financiero de bolsillo',
+    plansStarterFeature1: '10 escaneos/mes',
+    plansStarterFeature2: 'Registro manual de movimientos',
+    plansStarterFeature3: 'Dashboard financiero básico',
+    plansStarterFeature4: 'Alertas de riesgo',
+    plansStarterFeature5: 'Soporte IA 20 mensajes/mes',
+    plansStarterFeature6: 'Sin reportes PDF',
+    plansStarterFeature7: 'Sin exportar CSV',
+    
+    plansProTagline: 'Digitalización inteligente',
+    plansProFeature1: '30 escaneos/mes',
+    plansProFeature2: 'Registro manual ilimitado',
+    plansProFeature3: 'Reportes PDF completos',
+    plansProFeature4: 'Exportar CSV',
+    plansProFeature5: 'Comparación mensual',
+    plansProFeature6: 'Punto de equilibrio',
+    plansProFeature7: 'Rotación de inventario',
+    plansProFeature8: 'Soporte IA 50 mensajes/mes',
+    
+    plansBusinessTagline: 'Auditoría de sobrecostos',
+    plansBusinessFeature1: '120 escaneos/mes',
+    plansBusinessFeature2: 'Todo el plan Pro',
+    plansBusinessFeature3: 'Auditoría forense de gastos',
+    plansBusinessFeature4: 'Detección de sobrecostos de proveedores',
+    plansBusinessFeature5: '3 usuarios incluidos',
+    plansBusinessFeature6: 'Historial de eliminaciones',
+    plansBusinessFeature7: 'Soporte IA 200 mensajes/mes',
+    
+    plansEliteTagline: 'Radar de quiebra',
+    plansEliteFeature1: '300 escaneos/mes',
+    plansEliteFeature2: 'Todo el plan Business',
+    plansEliteFeature3: 'Radar de quiebra (90 días)',
+    plansEliteFeature4: 'Alertas predictivas WhatsApp',
+    plansEliteFeature5: 'Certificado Salud Financiera (QR)',
+    plansEliteFeature6: '10 usuarios incluidos',
+    plansEliteFeature7: 'Soporte IA 500 mensajes/mes',
+    
+    cerrar: 'Cerrar'
+  },
+  
+  en: {
+    // General
+    title: 'STRATIUM AI',
+    subtitle: 'Cost Optimization Specialist & AI Financial Auditor',
+    ventas: 'Sales (Month)',
+    utilidad: 'Estimated Profit',
+    margen: 'Margin',
+    saldo: 'Cash Balance',
+    analizar: 'Analyze',
+    reporte: 'PDF Report',
+    adjuntar: 'Attach',
+    produccion: 'Production Costing',
+    dictamen: 'Audit Report',
+    registros: 'Financial Records',
+    ejemplo: 'Ex: "Buy 10 caps for 125,000" or "Generate: Report"',
+    salud: 'Health Thermometer',
+    ingresosVsEgresos: 'Income vs Expenses',
+    alertas: 'Financial Alerts',
+    recomendaciones: 'Strategic Recommendations',
+    conectar: 'Connecting...',
+    enLinea: 'Online',
+    adjuntando: 'Uploading...',
+    generando: 'Generating...',
+    idioma: 'Language',
+    español: 'Spanish',
+    ingles: 'English',
+    
+    // Production
+    material: 'Material Cost',
+    horas: 'Work Hours',
+    valorHora: 'Hourly Rate',
+    transporte: 'Transportation',
+    precioVenta: 'Selling Price',
+    productoNombre: 'Product Name',
+    costoUnitario: 'Unit Cost',
+    precioSugerido: 'Suggested Price (30%)',
+    calcular: 'Calculating...',
+    cargarInventario: 'Add to Inventory',
+    alertaProduccion: '⚠️ ALERT: Production at a loss. Unit cost exceeds selling price. Review costs.',
+    
+    // Financial Health
+    oxigeno: 'Cash runway',
+    saludExcelente: 'Excellent',
+    saludEstable: 'Stable',
+    saludCritico: 'Critical',
+    sinDatos: 'No data',
+    verHistorial: 'View full history',
+    totalTransacciones: 'transactions',
+    
+    // Tooltips
+    tooltipVentas: 'Total sales revenue for the current month',
+    tooltipUtilidad: 'Revenue minus expenses for the period',
+    tooltipMargen: 'Profit percentage over sales',
+    tooltipSaldo: 'Historical accumulated balance (income - expenses)',
+    tooltipOxigeno: 'Days you can operate with current balance without new income',
+    tooltipProductoHueso: 'Product with no sales for over 15 days - recommendation: discount liquidation',
+    tooltipMargenBajo: 'Margin below 20% - risk in dropshipping if returns occur',
+    tooltipEstrella: 'Product with highest revenue in the period',
+    tooltipQuiebra: 'Cash flow alert - immediate action required',
+    tooltipSalud: 'Financial health indicator based on net margin',
+    tooltipTermometro: 'Health bar: >30% Excellent, 15-30% Stable, <15% Critical',
+    
+    // Monthly comparison
+    variacionVentas: 'vs last month',
+    crecimiento: 'Growth',
+    decrecimiento: 'Decline',
+    puntoEquilibrio: 'Break-even Point',
+    puntoEquilibrioDesc: 'Sales needed to cover fixed costs',
+    alertaPuntoEquilibrio: '⚠️ You are below break-even point. Need more sales to cover fixed costs.',
+    
+    // Login & Auth
+    loginTitle: 'Welcome to STRATIUM AI',
+    loginSubtitle: 'Your AI Financial Assistant',
+    email: 'Email',
+    password: 'Password',
+    confirmPassword: 'Confirm Password',
+    nombre: 'Name (optional)',
+    login: 'Sign In',
+    register: 'Sign Up',
+    logout: 'Sign Out',
+    noAccount: "Don't have an account?",
+    hasAccount: 'Already have an account?',
+    switchToRegister: 'Sign up here',
+    switchToLogin: 'Sign in here',
+    plan: 'Plan',
+    gratis: 'Free (15 days)',
+    pro: 'Pro',
+    business: 'Business',
+    elite: 'Elite',
+    loadingAuth: 'Loading authentication...',
+    errorAuth: 'Authentication error',
+    showPassword: 'Show',
+    hidePassword: 'Hide',
+    passwordsDontMatch: 'Passwords do not match',
+    
+    // Audit & Anomalies
+    alertaValorAtipico: '⚠️ Unusual expense detected',
+    alertaValorAtipicoDesc: 'This expense significantly exceeds your average. Is it correct?',
+    alertaInconsistenciaSaldo: '⚠️ Balance inconsistency detected',
+    alertaInconsistenciaSaldoDesc: 'Calculated balance does not match the sum of transactions. Review your records.',
+    verLogsEliminaciones: 'View deletion history',
+    
+    // Upgrade Modal
+    upgradeTitle: 'Feature not available',
+    upgradeDescription: 'is exclusive to paid plans',
+    upgradePro: 'Pro',
+    upgradeBusiness: 'Business',
+    upgradeElite: 'Elite',
+    upgradeButton: 'View Plans and Pricing',
+    starterPlan: '15-day Trial',
+    plan1: 'Pro',
+    plan2: 'Business',
+    plan3: 'Elite',
+    
+    // OCR
+    procesandoOCR: 'Processing invoice with OCR...',
+    escanearFactura: 'Scan invoice',
+    
+    // Terms
+    aceptarTerminos: 'I accept the Terms and Conditions and authorize the processing of my personal data.',
+    terminosLink: 'Terms and Conditions',
+    
+    // Expiration dates
+    preguntarVencimiento: 'Add expiration date?',
+    fechaVencimiento: 'Expiration date',
+    guardarConVencimiento: 'Save with expiration',
+    saltarVencimiento: 'Skip (no expiration)',
+    producto: 'Product',
+    cancelar: 'Cancel',
+    
+    // My Plan Section
+    miPlanActual: 'My Current Plan',
+    gestionaSuscripcion: 'Manage your subscription',
+    cambiarPlan: 'Change Plan',
+    escaneos: 'Scans',
+    dias: 'Days',
+    capitalInyectado: 'Injected Capital',
+    
+    // Audit Config
+    configuracionAuditoria: 'Audit Configuration',
+    configurar: 'Configure',
+    region: 'Region',
+    gastosFijos: 'Monthly Fixed Expenses',
+    plataforma: 'Main selling platform',
+    guardar: 'Save Configuration',
+    pagar: 'Pay',
+    masPopular: 'Most popular',
+    
+    // Scan packages
+    paquetesEscaneos: 'ADDITIONAL SCAN PACKAGES',
+    paqueteBasico: 'Basic',
+    paqueteFrecuente: 'Frequent',
+    paqueteProfesional: 'Professional',
+    paqueteCorporativo: 'Corporate',
+    paquetesNota: 'Packages are purchased inside the app and NOT included in the monthly plan',
+    
+    // Plans descriptions
+    plansStarterTagline: 'Pocket financial advisor',
+    plansStarterFeature1: '10 scans/month',
+    plansStarterFeature2: 'Manual transaction entry',
+    plansStarterFeature3: 'Basic financial dashboard',
+    plansStarterFeature4: 'Risk alerts',
+    plansStarterFeature5: 'AI support 20 messages/month',
+    plansStarterFeature6: 'No PDF reports',
+    plansStarterFeature7: 'No CSV export',
+    
+    plansProTagline: 'Smart digitization',
+    plansProFeature1: '30 scans/month',
+    plansProFeature2: 'Unlimited manual entry',
+    plansProFeature3: 'Complete PDF reports',
+    plansProFeature4: 'CSV export',
+    plansProFeature5: 'Monthly comparison',
+    plansProFeature6: 'Break-even point',
+    plansProFeature7: 'Inventory turnover',
+    plansProFeature8: 'AI support 50 messages/month',
+    
+    plansBusinessTagline: 'Overcost audit',
+    plansBusinessFeature1: '120 scans/month',
+    plansBusinessFeature2: 'Everything in Pro',
+    plansBusinessFeature3: 'Forensic expense audit',
+    plansBusinessFeature4: 'Supplier overcost detection',
+    plansBusinessFeature5: '3 users included',
+    plansBusinessFeature6: 'Deletion history',
+    plansBusinessFeature7: 'AI support 200 messages/month',
+    
+    plansEliteTagline: 'Bankruptcy radar',
+    plansEliteFeature1: '300 scans/month',
+    plansEliteFeature2: 'Everything in Business',
+    plansEliteFeature3: 'Bankruptcy radar (90 days)',
+    plansEliteFeature4: 'Predictive WhatsApp alerts',
+    plansEliteFeature5: 'Financial Health Certificate (QR)',
+    plansEliteFeature6: '10 users included',
+    plansEliteFeature7: 'AI support 500 messages/month',
+    
+    cerrar: 'Close'
+  }
+};
+
