@@ -2,11 +2,12 @@
 // Módulo de Producción con Auditoría Implacable v2.1
 
 import React, { useState } from 'react';
-import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, increment } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { useAuditEngine } from '../hooks/useAuditEngine';
 import { generarDictamenEspecialista } from '../util/auditoriaDiagnostico';
+import { useCargarProduccion } from '../hooks/useCargarProduccion';
 
-const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
+const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventario, setMovimientos }) => {
   const [formData, setFormData] = useState({
     nombreProducto: '',
     unidadesProducidas: 1,
@@ -24,6 +25,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
   
   const db = getFirestore();
   const { auditarProduccion, configuracion, cargandoConfig } = useAuditEngine(usuarioActual);
+  const { cargarAInventario } = useCargarProduccion(usuarioActual);
 
   const formatMoney = (valor, moneda = 'COP') => {
     const opciones = {
@@ -133,7 +135,6 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
         setMostrarConfigAlert(true);
       }
       
-      // ✅ GENERAR DICTAMEN ESPECIALIZADO
       const hallazgos = generarDictamenEspecialista(resultado, configuracion, idioma);
       resultado.hallazgosEspecialistas = hallazgos;
       
@@ -150,76 +151,34 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const handleCargarProduccion = async () => {
     if (!resultadoAuditoria?.aprobado) {
       alert('⚠️ No puedes cargar este producto. El dictamen de auditoría es RECHAZADO.');
       return;
     }
     
-    setLoading(true);
+    const produccionData = {
+      productoNombre: formData.nombreProducto,
+      materiales: formData.materialesTotal,
+      horas: formData.horasLaborTotal,
+      valorHora: formData.valorHoraPersonalizado,
+      transporte: formData.transporteTotal,
+      precioVenta: formData.precioVentaUnitario
+    };
     
-    try {
-      const unidades = parseInt(formData.unidadesProducidas) || 1;
-      const costoUnitario = resultadoAuditoria.costoUnitarioCargado;
-      const costoTotal = costoUnitario * unidades;
-      
-      const inventarioRef = collection(db, 'inventario');
-      await addDoc(inventarioRef, {
-        producto: formData.nombreProducto,
-        cantidad: unidades,
-        costoUnitario: costoUnitario,
-        costoTotal: costoTotal,
-        clasificacion: resultadoAuditoria.clasificacion,
-        margenNetoReal: parseFloat(resultadoAuditoria.margenNetoReal),
-        auditoriaFecha: resultadoAuditoria.fechaAuditoria,
-        userId: usuarioActual?.uid,
-        fechaActualizacion: serverTimestamp(),
-        origen: 'produccion_auditada'
-      });
-      
-      const registrosRef = collection(db, 'registros');
-      await addDoc(registrosRef, {
-        texto: `Producción auditada: ${formData.nombreProducto} - ${unidades} unidades`,
-        concepto: formData.nombreProducto,
-        valor: costoTotal,
-        tipo: 'egreso',
-        categoria: 'PRODUCCION',
-        emoji: '🏭',
-        cantidad: unidades,
-        costoUnitario: costoUnitario,
-        clasificacion: resultadoAuditoria.clasificacion,
-        margenNetoReal: parseFloat(resultadoAuditoria.margenNetoReal),
-        fecha: serverTimestamp(),
-        userId: usuarioActual?.uid
-      });
-      
-      const userRef = doc(db, 'usuarios', usuarioActual?.uid);
-      await updateDoc(userRef, {
-        saldoCaja: increment(-costoTotal)
-      });
-      
-      if (onSuccess) onSuccess();
-      alert(t.exito);
-      
-      setFormData({
-        nombreProducto: '',
-        unidadesProducidas: 1,
-        materialesTotal: '',
-        horasLaborTotal: '',
-        valorHoraPersonalizado: '',
-        transporteTotal: '',
-        precioVentaUnitario: ''
-      });
-      setResultadoAuditoria(null);
-      
-    } catch (error) {
-      console.error('Error:', error);
-      if (onError) onError(error);
-    } finally {
-      setLoading(false);
-    }
+    await cargarAInventario(
+      produccionData,
+      { costoUnitario: resultadoAuditoria.costoUnitarioCargado },
+      setFormData,
+      setResultadoAuditoria,
+      () => {},
+      () => {},
+      setLoading,
+      setInventario,
+      setMovimientos
+    );
+    
+    if (onSuccess) onSuccess();
   };
 
   if (cargandoConfig) {
@@ -248,7 +207,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
         </div>
       )}
       
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); handleCargarProduccion(); }} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
             <label className="block text-gray-400 text-sm mb-1">{t.nombre}</label>
@@ -378,7 +337,6 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError }) => {
               <p className="text-sm text-gray-300 mt-1">{resultadoAuditoria.mensajeDetallado}</p>
             </div>
             
-            {/* ✅ DICTAMEN DEL ESPECIALISTA - NUEVA SECCIÓN */}
             {resultadoAuditoria.hallazgosEspecialistas && resultadoAuditoria.hallazgosEspecialistas.length > 0 && (
               <div className="mb-3 p-2 bg-red-900/30 rounded-lg border-l-4 border-red-500">
                 <p className="text-red-400 text-xs font-bold mb-1">{t.dictamenEspecialista}:</p>

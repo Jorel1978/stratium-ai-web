@@ -32,6 +32,10 @@ import { Toaster } from 'react-hot-toast';
 import { programarAlertasDiarias, verificarVencimientoProductos, verificarStockBajo } from './services/alertasService';
 import ProduccionForm from './components/ProduccionForm';
 import ConfiguracionAuditoria from './components/ConfiguracionAuditoria';
+import ModalUpgrade from './components/ModalUpgrade';
+import SupportBot from './components/SupportBot';
+import useDeleteTransaction from './hooks/useDeleteTransaction';
+import useCargarProduccion from './hooks/useCargarProduccion';
 //import CheckoutStripe from './components/CheckoutStripe'; // Oculto Temporalmente
 
 const firebaseConfig = {
@@ -976,7 +980,8 @@ const App = () => {
   const [error, setError] = useState(null);
   const [validationMessage, setValidationMessage] = useState(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
-  
+  const [loading, setLoading] = useState(false);  // ← AGREGAR AQUÍ
+
   // Estado para el módulo de producción
   const [produccion, setProduccion] = useState({
     materiales: '',
@@ -1073,8 +1078,12 @@ const App = () => {
 
     // ✅ NUEVO ESTADO PARA MODAL DE CONFIGURACIÓN DE AUDITORÍA
   const [mostrarConfigModal, setMostrarConfigModal] = useState(false);
+  
+  // ✅ HOOK DE ELIMINACIÓN ATÓMICA
+  const { handleDelete } = useDeleteTransaction(usuarioActual, puedeAccederAFuncion, formatearValor);
+const { cargarAInventario } = useCargarProduccion(usuarioActual);
 
-// ============================================================
+  // ============================================================
 // VERIFICAR PAGO PENDIENTE - SOLO LECTURA DE URL (SIN TOKEN)
 // La actualización de Firestore la hace el Webhook del backend
 // ============================================================
@@ -1781,11 +1790,28 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
   });
   
   const ventas = movimientosMes.filter(m => m.tipo === 'ingreso');
-  const compras = movimientosMes.filter(m => m.tipo === 'egreso');
+  const egresos = movimientosMes.filter(m => m.tipo === 'egreso');
   const ventasTotales = ventas.reduce((s, m) => s + m.valor, 0);
-  const comprasTotales = compras.reduce((s, m) => s + m.valor, 0);
-  const saldo = ventasTotales - comprasTotales;
-  const margenCalc = ventasTotales > 0 ? ((saldo / ventasTotales) * 100).toFixed(1) : 0;
+  const egresosTotales = egresos.reduce((s, m) => s + m.valor, 0);
+  const utilidadNeta = ventasTotales - egresosTotales;
+  const margenSimple = ventasTotales > 0 ? ((utilidadNeta / ventasTotales) * 100).toFixed(1) : 0;
+  
+  // Clasificar costos variables y gastos fijos
+  const categoriasVariables = ['INVENTARIO', 'Insumos', 'Mercancía', 'Compra'];
+  const costosVariables = egresos.filter(m => categoriasVariables.includes(m.categoria)).reduce((s, m) => s + m.valor, 0);
+  const gastosFijos = egresosTotales - costosVariables;
+  
+  // Cálculo de los 6 márgenes
+  const margenBruto = ventasTotales > 0 ? ((ventasTotales - costosVariables) / ventasTotales) * 100 : 0;
+  const margenContribucion = ventasTotales > 0 ? ((ventasTotales - costosVariables) / ventasTotales) * 100 : 0;
+  const margenEBITDA = ventasTotales > 0 ? ((ventasTotales - costosVariables - gastosFijos) / ventasTotales) * 100 : 0;
+  const margenOperativo = ventasTotales > 0 ? ((utilidadNeta) / ventasTotales) * 100 : 0;
+  const margenEBT = ventasTotales > 0 ? ((utilidadNeta) / ventasTotales) * 100 : 0;
+  const margenNeto = ventasTotales > 0 ? ((utilidadNeta) / ventasTotales) * 100 : 0;
+  
+  // ROI (Retorno sobre Inversión)
+  const capitalTotalInvertido = (usuarioActual?.deudaConDueño || 0) + (usuarioActual?.aportesPersonales || 0);
+  const roi = capitalTotalInvertido > 0 ? ((utilidadNeta / capitalTotalInvertido) * 100).toFixed(1) : 0;
   
   const formatearValorLocal = (valor) => {
     return new Intl.NumberFormat(idioma === 'es' ? 'es-CO' : 'en-US', {
@@ -1800,71 +1826,161 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
     textoDictamen = idioma === 'es' 
       ? 'No hay transacciones en el periodo actual. Comienza a registrar tus operaciones para obtener un análisis financiero.'
       : 'No transactions in the current period. Start recording your operations to get a financial analysis.';
-  } else {
-    if (!esPlanPago) {
-      textoDictamen = idioma === 'es' 
-        ? '📊 REPORTE EJECUTIVO\n━━━━━━━━━━━━━━━━━━━━━\n'
-        : '📊 EXECUTIVE REPORT\n━━━━━━━━━━━━━━━━━━━━━\n';
-      textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
-      textoDictamen += (idioma === 'es' ? '📉 Gastos: ' : '📉 Expenses: ') + `${formatearValorLocal(comprasTotales)}\n`;
-      textoDictamen += (idioma === 'es' ? '💰 Utilidad: ' : '💰 Profit: ') + `${formatearValorLocal(saldo)}\n`;
-      textoDictamen += (idioma === 'es' ? '📊 Margen: ' : '📊 Margin: ') + `${margenCalc}%\n\n`;
-      
-      const productosLentos = inventario.filter(item => {
-        if (!item.producto || item.cantidad <= 0) return false;
-        const ventasProducto = movimientosMes.filter(m => 
-          m.tipo === 'ingreso' && 
-          m.concepto?.toLowerCase() === item.producto.toLowerCase()
-        );
-        if (ventasProducto.length === 0) return true;
-        const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
-        const dias = Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
-        return dias > 180;
-      });
-      
-      if (productosLentos.length > 0) {
-        textoDictamen += (idioma === 'es' ? '⚠️ ALERTA DE INVENTARIO:\n' : '⚠️ INVENTORY ALERT:\n');
-        productosLentos.slice(0, 3).forEach(p => {
-          textoDictamen += `   • ${p.producto}: ${p.cantidad} ${idioma === 'es' ? 'unidades sin rotación' : 'units without rotation'}\n`;
-        });
-        textoDictamen += `\n💡 ${idioma === 'es' ? 'Actualiza a Plan Business para análisis detallado y precios sugeridos.' : 'Upgrade to Business Plan for detailed analysis and suggested prices.'}\n`;
-      }
+  } else if (!esPlanPago) {
+    // ============================================================
+    // PLAN GRATUITO (ANZUELO)
+    // ============================================================
+    textoDictamen = idioma === 'es' 
+      ? '📊 REPORTE EJECUTIVO\n━━━━━━━━━━━━━━━━━━━━━\n'
+      : '📊 EXECUTIVE REPORT\n━━━━━━━━━━━━━━━━━━━━━\n';
+    textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
+    textoDictamen += (idioma === 'es' ? '📉 Gastos: ' : '📉 Expenses: ') + `${formatearValorLocal(egresosTotales)}\n`;
+    textoDictamen += (idioma === 'es' ? '💰 Utilidad Neta: ' : '💰 Net Profit: ') + `${formatearValorLocal(utilidadNeta)}\n`;
+    textoDictamen += (idioma === 'es' ? '📊 Margen Neto: ' : '📊 Net Margin: ') + `${margenSimple}%\n\n`;
+    
+    // Diagnóstico básico
+    if (utilidadNeta < 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '⚠️ Estás operando con pérdida. Revisa precios de venta o reduce costos.\n'
+        : '⚠️ You are operating at a loss. Review selling prices or reduce costs.\n');
+    } else if (margenSimple > 25) {
+      textoDictamen += (idioma === 'es' 
+        ? '✅ Excelente rentabilidad. Mantén la estrategia actual.\n'
+        : '✅ Excellent profitability. Maintain current strategy.\n');
+    } else if (margenSimple > 10) {
+      textoDictamen += (idioma === 'es' 
+        ? '📢 Rentabilidad saludable. Busca optimizar gastos para mejorar.\n'
+        : '📢 Healthy profitability. Look to optimize expenses to improve.\n');
     } else {
-      // Versión completa para planes de pago (también traducida)
-      textoDictamen = idioma === 'es'
-        ? '📊 ANALISIS FINANCIERO DETALLADO\n━━━━━━━━━━━━━━━━━━━━━\n'
-        : '📊 DETAILED FINANCIAL ANALYSIS\n━━━━━━━━━━━━━━━━━━━━━\n';
-      textoDictamen += (idioma === 'es' ? `Período: ${obtenerPrimerDiaMes()} al ${obtenerFechaActual()}\n` : `Period: ${obtenerPrimerDiaMes()} to ${obtenerFechaActual()}\n`);
-      textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
-      textoDictamen += (idioma === 'es' ? '📉 Gastos: ' : '📉 Expenses: ') + `${formatearValorLocal(comprasTotales)}\n`;
-      textoDictamen += (idioma === 'es' ? '💰 Utilidad Neta: ' : '💰 Net Profit: ') + `${formatearValorLocal(saldo)}\n`;
-      textoDictamen += (idioma === 'es' ? '📊 Margen Neto: ' : '📊 Net Margin: ') + `${margenCalc}%\n`;
-      textoDictamen += (idioma === 'es' ? '💵 Capital Inyectado: ' : '💵 Injected Capital: ') + `${formatearValorLocal(usuarioActual?.aportesPersonales || 0)}\n`;
-      textoDictamen += (idioma === 'es' ? '🏦 Deuda con Dueño: ' : '🏦 Debt to Owner: ') + `${formatearValorLocal(usuarioActual?.deudaConDueño || 0)}\n\n`;
-      
-      if (saldo < 0) {
-        textoDictamen += (idioma === 'es' 
-          ? '⚠️ ALERTA: El saldo es negativo. Tus gastos superan tus ingresos.\n'
-          : '⚠️ ALERT: Balance is negative. Your expenses exceed your income.\n');
-        textoDictamen += (idioma === 'es'
-          ? '💡 Revisa la sección de "Alertas" para recomendaciones específicas.\n'
-          : '💡 Check the "Alerts" section for specific recommendations.\n');
-      } else if (saldo > 0 && margenCalc > 25) {
-        textoDictamen += (idioma === 'es'
-          ? '✅ Excelente rentabilidad. Mantén la estrategia actual.\n'
-          : '✅ Excellent profitability. Maintain current strategy.\n');
-      } else {
-        textoDictamen += (idioma === 'es'
-          ? '📢 La operación es estable. Monitorea tus indicadores clave.\n'
-          : '📢 Operations are stable. Monitor your key indicators.\n');
-      }
+      textoDictamen += (idioma === 'es' 
+        ? '⚠️ Rentabilidad baja. Prioriza reducir costos o aumentar ventas.\n'
+        : '⚠️ Low profitability. Prioritize reducing costs or increasing sales.\n');
     }
+    
+    // 🎯 GATILLO MENTAL PARA UPGRADE
+    textoDictamen += (idioma === 'es' 
+      ? '\n🔓 ¿Quieres saber tu Margen de Contribución, EBITDA y ROI?\n'
+      : '\n🔓 Want to know your Contribution Margin, EBITDA and ROI?\n');
+    textoDictamen += (idioma === 'es' 
+      ? '💡 Actualiza a Plan Business y descubre los 6 márgenes de rentabilidad real.\n'
+      : '💡 Upgrade to Business Plan and discover the 6 real profitability margins.\n');
+    
+    // ✅ VERIFICAR CAPITAL CERO PARA ROI (SOLO PARA PLAN DE PAGO)
+    if (capitalTotalInvertido === 0 && ventasTotales > 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '\n⚠️ Completa tu inversión inicial para calcular tu ROI (Retorno sobre Inversión). Registra tus aportes personales o deudas con el dueño.\n'
+        : '\n⚠️ Complete your initial investment to calculate your ROI (Return on Investment). Record your personal contributions or debts to the owner.\n');
+    }
+    
+    // Alerta de inventario lento
+    const productosLentos = inventario.filter(item => {
+      if (!item.producto || item.cantidad <= 0) return false;
+      const ventasProducto = movimientosMes.filter(m => 
+        m.tipo === 'ingreso' && 
+        m.concepto?.toLowerCase() === item.producto.toLowerCase()
+      );
+      if (ventasProducto.length === 0) return true;
+      const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
+      const dias = Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
+      return dias > 180;
+    });
+    
+    if (productosLentos.length > 0) {
+      textoDictamen += (idioma === 'es' ? '\n⚠️ ALERTA DE INVENTARIO:\n' : '\n⚠️ INVENTORY ALERT:\n');
+      productosLentos.slice(0, 3).forEach(p => {
+        textoDictamen += `   • ${p.producto}: ${p.cantidad} ${idioma === 'es' ? 'unidades sin rotación' : 'units without rotation'}\n`;
+      });
+    }
+    
+  } else {
+    // ============================================================
+    // PLAN DE PAGO (BUSINESS/ELITE) - ANÁLISIS COMPLETO
+    // ============================================================
+    textoDictamen = idioma === 'es'
+      ? '📊 ANALISIS FINANCIERO DETALLADO\n━━━━━━━━━━━━━━━━━━━━━\n'
+      : '📊 DETAILED FINANCIAL ANALYSIS\n━━━━━━━━━━━━━━━━━━━━━\n';
+    textoDictamen += (idioma === 'es' ? `Período: ${obtenerPrimerDiaMes()} al ${obtenerFechaActual()}\n` : `Period: ${obtenerPrimerDiaMes()} to ${obtenerFechaActual()}\n`);
+    textoDictamen += (idioma === 'es' ? '📈 Ventas: ' : '📈 Sales: ') + `${formatearValorLocal(ventasTotales)}\n`;
+    textoDictamen += (idioma === 'es' ? '📉 Costos Variables: ' : '📉 Variable Costs: ') + `${formatearValorLocal(costosVariables)}\n`;
+    textoDictamen += (idioma === 'es' ? '📉 Gastos Fijos: ' : '📉 Fixed Expenses: ') + `${formatearValorLocal(gastosFijos)}\n`;
+    textoDictamen += (idioma === 'es' ? '💰 Utilidad Neta: ' : '💰 Net Profit: ') + `${formatearValorLocal(utilidadNeta)}\n\n`;
+    
+    textoDictamen += (idioma === 'es' ? '💰 MÁRGENES DE UTILIDAD:\n' : '💰 PROFIT MARGINS:\n');
+    textoDictamen += (idioma === 'es' ? '   • Margen Bruto: ' : '   • Gross Margin: ') + `${margenBruto.toFixed(1)}%\n`;
+    textoDictamen += (idioma === 'es' ? '   • Margen de Contribución: ' : '   • Contribution Margin: ') + `${margenContribucion.toFixed(1)}%\n`;
+    textoDictamen += (idioma === 'es' ? '   • Margen EBITDA: ' : '   • EBITDA Margin: ') + `${margenEBITDA.toFixed(1)}%\n`;
+    textoDictamen += (idioma === 'es' ? '   • Margen Operativo: ' : '   • Operating Margin: ') + `${margenOperativo.toFixed(1)}%\n`;
+    textoDictamen += (idioma === 'es' ? '   • Margen EBT: ' : '   • EBT Margin: ') + `${margenEBT.toFixed(1)}%\n`;
+    textoDictamen += (idioma === 'es' ? '   • Margen Neto: ' : '   • Net Margin: ') + `${margenNeto.toFixed(1)}%\n\n`;
+    
+    textoDictamen += (idioma === 'es' ? '📊 INDICADORES ADICIONALES:\n' : '📊 ADDITIONAL INDICATORS:\n');
+    textoDictamen += (idioma === 'es' ? '   • ROI (Retorno sobre Inversión): ' : '   • ROI (Return on Investment): ') + `${roi}%\n\n`;
+    
+    // ✅ VERIFICAR CAPITAL CERO PARA ROI
+    if (capitalTotalInvertido === 0 && ventasTotales > 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '⚠️ Completa tu inversión inicial para calcular tu ROI (Retorno sobre Inversión). Registra tus aportes personales o deudas con el dueño.\n\n'
+        : '⚠️ Complete your initial investment to calculate your ROI (Return on Investment). Record your personal contributions or debts to the owner.\n\n');
+    }
+    
+    // Diagnóstico ejecutivo
+    if (ventasTotales === 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '⚠️ No hay ventas registradas. Activa tu estrategia comercial.\n'
+        : '⚠️ No sales recorded. Activate your commercial strategy.\n');
+    } else if (utilidadNeta < 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '🚨 Estás operando con pérdida de ' + formatearValorLocal(Math.abs(utilidadNeta)) + '. Necesitas aumentar precios un mínimo del ' + (Math.abs(margenNeto) + 10).toFixed(0) + '% o reducir costos.\n'
+        : '🚨 You are operating at a loss of ' + formatearValorLocal(Math.abs(utilidadNeta)) + '. You need to increase prices by a minimum of ' + (Math.abs(margenNeto) + 10).toFixed(0) + '% or reduce costs.\n');
+    } else if (margenNeto > 25) {
+      textoDictamen += (idioma === 'es' 
+        ? '✅ Excelente rentabilidad (margen neto ' + margenNeto.toFixed(1) + '%). Tu ROI del ' + roi + '% indica que la inversión está generando buenos retornos.\n'
+        : '✅ Excellent profitability (net margin ' + margenNeto.toFixed(1) + '%). Your ROI of ' + roi + '% indicates that the investment is generating good returns.\n');
+    } else if (margenNeto > 15) {
+      textoDictamen += (idioma === 'es' 
+        ? '📢 Buena rentabilidad (margen neto ' + margenNeto.toFixed(1) + '%). Optimiza gastos para alcanzar el 25%.\n'
+        : '📢 Good profitability (net margin ' + margenNeto.toFixed(1) + '%). Optimize expenses to reach 25%.\n');
+    } else if (margenNeto > 5) {
+      textoDictamen += (idioma === 'es' 
+        ? '⚠️ Margen ajustado (' + margenNeto.toFixed(1) + '%). Reduce gastos fijos o revisa precios de proveedores.\n'
+        : '⚠️ Tight margin (' + margenNeto.toFixed(1) + '%). Reduce fixed costs or review supplier prices.\n');
+    } else {
+      textoDictamen += (idioma === 'es' 
+        ? '🔴 Rentabilidad insuficiente (' + margenNeto.toFixed(1) + '%). Reestructura precios o elimina productos no rentables.\n'
+        : '🔴 Insufficient profitability (' + margenNeto.toFixed(1) + '%). Restructure prices or eliminate unprofitable products.\n');
+    }
+    
+    // Recomendaciones específicas
+    if (gastosFijos > ventasTotales * 0.4 && ventasTotales > 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '💡 Tus gastos fijos representan más del 40% de las ventas. Reduce arriendo o renegocia servicios.\n'
+        : '💡 Your fixed expenses represent more than 40% of sales. Reduce rent or renegotiate services.\n');
+    }
+    
+    if (margenContribucion < 30 && ventasTotales > 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '💡 Tu margen de contribución es bajo (' + margenContribucion.toFixed(1) + '%). Revisa costos de materia prima o aumenta precios.\n'
+        : '💡 Your contribution margin is low (' + margenContribucion.toFixed(1) + '%). Review raw material costs or increase prices.\n');
+    }
+    
+    if (roi < 10 && roi > 0) {
+      textoDictamen += (idioma === 'es' 
+        ? '💡 Tu ROI es bajo (' + roi + '%). Busca inversiones con mayor retorno o reduce el capital invertido.\n'
+        : '💡 Your ROI is low (' + roi + '%). Look for investments with higher returns or reduce invested capital.\n');
+    } else if (roi > 30) {
+      textoDictamen += (idioma === 'es' 
+        ? '✅ ¡Excelente ROI del ' + roi + '%! Tu inversión está generando muy buenos retornos.\n'
+        : '✅ Excellent ROI of ' + roi + '%! Your investment is generating very good returns.\n');
+    }
+    
+    textoDictamen += (idioma === 'es' ? '\n💵 Capital Inyectado: ' : '\n💵 Injected Capital: ') + `${formatearValorLocal(usuarioActual?.aportesPersonales || 0)}\n`;
+    textoDictamen += (idioma === 'es' ? '🏦 Deuda con Dueño: ' : '🏦 Debt to Owner: ') + `${formatearValorLocal(usuarioActual?.deudaConDueño || 0)}\n`;
   }
   
   setDictamenGeneral(textoDictamen);
 }, [obtenerFechaLimiteHistorial, obtenerPrimerDiaMes, obtenerFechaActual, inventario, usuarioActual, idioma]);
-
-  // ============================================================
+  
+// ============================================================
   // REGISTRAR COMPRA CON FECHA DE VENCIMIENTO (NUEVO)
   // ============================================================
   const registrarCompraConVencimiento = async (texto, concepto, valor, cantidad, fechaVencimiento = null) => {
@@ -2014,89 +2130,7 @@ const generarDictamenGeneral = useCallback((movs, esPlanPago = false) => {
     }
   };
 
-  // ============================================================
-  // CARGAR A INVENTARIO DESDE PRODUCCIÓN
-  // ============================================================
-  const cargarAInventario = async () => {
-    if (!usuarioActual?.uid) {
-      setError('Debes iniciar sesión para guardar datos');
-      return;
-    }
-    if (!costeoResultado || !produccion.productoNombre) {
-      setError('Complete el nombre del producto y calcule el costo primero');
-      return;
-    }
-    
-    setCargandoInventario(true);
-    try {
-      const producto = produccion.productoNombre.trim();
-      const cantidad = 1;
-      const costoUnitario = costeoResultado.costoUnitario;
-      const costoTotal = costoUnitario * cantidad;
-      
-      const q = query(inventarioCollection, where('producto', '==', producto), where('userId', '==', usuarioActual.uid));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        await addDoc(inventarioCollection, {
-          producto: producto,
-          cantidad: cantidad,
-          costoUnitario: costoUnitario,
-          costoTotal: costoTotal,
-          fechaActualizacion: serverTimestamp(),
-          origen: 'produccion',
-          userId: usuarioActual.uid
-        });
-      } else {
-        const docInventario = querySnapshot.docs[0];
-        const dataActual = docInventario.data();
-        const nuevaCantidad = dataActual.cantidad + cantidad;
-        const nuevoCostoTotal = (dataActual.cantidad * dataActual.costoUnitario) + costoTotal;
-        const nuevoCostoUnitario = nuevoCostoTotal / nuevaCantidad;
-        
-        await updateDoc(doc(db, 'inventario', docInventario.id), {
-          cantidad: nuevaCantidad,
-          costoUnitario: nuevoCostoUnitario,
-          costoTotal: nuevoCostoTotal,
-          fechaActualizacion: serverTimestamp()
-        });
-      }
-      
-      await addDoc(registrosCollection, {
-        texto: `Producción: ${producto}`,
-        concepto: producto,
-        valor: costoTotal,
-        tipo: 'ingreso',
-        categoria: 'Producción',
-        emoji: '🏭',
-        cantidad: cantidad,
-        costoUnitario: costoUnitario,
-        fecha: serverTimestamp(),
-        userId: usuarioActual.uid
-      });
-      
-      setValidationMessage(`Producto "${producto}" agregado al inventario con costo unitario $${costoUnitario.toLocaleString()}`);
-      setTimeout(() => setValidationMessage(null), 5000);
-      
-      setProduccion({
-        materiales: '',
-        horas: '',
-        valorHora: '',
-        transporte: '',
-        precioVenta: '',
-        productoNombre: ''
-      });
-      setCosteoResultado(null);
-      
-    } catch (error) {
-      console.error('Error cargando a inventario:', error);
-      setError('Error al cargar el producto al inventario');
-    } finally {
-      setCargandoInventario(false);
-    }
-  };
-
-  // ============================================================
+    // ============================================================
   // FUNCIÓN DE ESCANEO OCR REAL
   // ============================================================
   const procesarEscaneoOCRReal = async (textoComando, imagenFile, db, registrosCollection, inventarioCollection, userId, monedaUsuario, fuentePago = 'negocio') => {
@@ -2863,7 +2897,6 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
     await user.getIdToken(true);
     
     // 4. Crear documento en Firestore (usando el UID como ID del documento)
-    // ✅ CORREGIDO: 'usuarios' en lugar de 'users'
     await setDoc(doc(db, 'usuarios', user.uid), {
       uid: user.uid,
       email: user.email,
@@ -2872,6 +2905,9 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
       modalidad: planSeleccionado === 'gratis' ? null : modalidadSeleccionada,
       creditosOCR: selectedPlan.creditosOCR,
       creditosUsados: 0,
+      // ✅ NUEVOS CAMPOS PARA SOPORTE IA
+      creditosUsadosSoporte: 0,
+      creditosExtraSoporte: 0,
       fechaVencimiento: fechaVencimiento,
       fechaInicio: new Date(),
       estado: 'pendiente_verificacion',
@@ -3224,199 +3260,7 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
     }
   };
 
-  // ============================================================
-  // MANEJAR ELIMINACIÓN CON LOG
-  // ============================================================
-  const handleDelete = async (id) => {
-    if (!usuarioActual?.uid) return;
-    
-    const registroAEliminar = movimientos.find(m => m.id === id);
-    
-    if (window.confirm(`¿Eliminar este registro permanentemente?
-Concepto: ${registroAEliminar?.concepto}
-Valor: ${formatearValor(registroAEliminar?.valor || 0)}
-Esta acción quedará registrada en la bitácora de auditoría.`)) {
-      try {
-        if (registroAEliminar && puedeAccederAFuncion('puedeVerLogs')) {
-          await registrarEliminacionEnLog(registroAEliminar);
-        }
-        
-        await deleteDoc(doc(db, 'registros', id));
-        setValidationMessage('✅ Registro eliminado. La eliminación quedó registrada en la bitácora de auditoría.');
-        setTimeout(() => setValidationMessage(null), 5000);
-      } catch (err) {
-        console.error('Error al eliminar:', err);
-        setError('Error al eliminar el registro.');
-      }
-    }
-  };
-
-  // ============================================================
-// MODAL DE UPGRADE (PLANES ACTUALIZADOS - CON STARTER)
-// ============================================================
-const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan }) => {
-  if (!isOpen) return null;
-  
-  return (
-    <div 
-      className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-[#1e293b] rounded-2xl p-6 max-w-4xl w-full border border-blue-900/30 shadow-2xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-center mb-4">
-          <div className="text-5xl mb-3">🔒</div>
-          <h3 className="text-xl font-bold text-white">{t.upgradeTitle}</h3>
-          <p className="text-gray-400 text-sm mt-2">
-            {funcionNombre} - {t.upgradeDescription}
-          </p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          
-          {/* PLAN STARTER */}
-          <div className="bg-slate-800/50 p-4 rounded-xl border border-green-500/30">
-            <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-green-400">Starter</h4>
-              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$29,900' : '$9.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-green-400 mt-1">{t.plansStarterTagline || 'Consejero financiero de bolsillo'}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature1 || '10 escaneos/mes'}</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature2 || 'Registro manual de movimientos'}</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature3 || 'Dashboard financiero básico'}</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature4 || 'Alertas de riesgo'}</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> {t.plansStarterFeature5 || 'Soporte IA 20 mensajes/mes'}</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> {t.plansStarterFeature6 || 'Sin reportes PDF'}</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> {t.plansStarterFeature7 || 'Sin exportar CSV'}</p>
-            </div>
-            <button
-              onClick={() => onSeleccionarPlan('starter')}
-              className="w-full mt-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-            >
-              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$29,900' : '$9.99'}
-            </button>
-          </div>
-          
-          {/* PLAN PRO */}
-          <div className="bg-slate-800/50 p-4 rounded-xl border border-cyan-500/30">
-            <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-cyan-400">Pro</h4>
-              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$79,900' : '$29.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-cyan-400 mt-1">{t.plansProTagline || 'Digitalización inteligente'}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature1 || '30 escaneos/mes'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature2 || 'Registro manual ilimitado'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature3 || 'Reportes PDF completos'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature4 || 'Exportar CSV'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature5 || 'Comparación mensual'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature6 || 'Punto de equilibrio'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature7 || 'Rotación de inventario'}</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> {t.plansProFeature8 || 'Soporte IA 50 mensajes/mes'}</p>
-            </div>
-            <button
-              onClick={() => onSeleccionarPlan('pro')}
-              className="w-full mt-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-            >
-              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$79,900' : '$29.99'}
-            </button>
-          </div>
-          
-          {/* PLAN BUSINESS */}
-          <div className="bg-slate-800/50 p-4 rounded-xl border border-purple-500/30 relative">
-            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full">
-              {t.masPopular || 'Más popular'}
-            </div>
-            <div className="text-center mb-3 mt-2">
-              <h4 className="text-xl font-bold text-purple-400">Business</h4>
-              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$199,900' : '$79.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-purple-400 mt-1">{t.plansBusinessTagline || 'Auditoría de sobrecostos'}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature1 || '120 escaneos/mes'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature2 || 'Todo el plan Pro'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature3 || 'Auditoría forense de gastos'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature4 || 'Detección de sobrecostos de proveedores'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature5 || '3 usuarios incluidos'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature6 || 'Historial de eliminaciones'}</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> {t.plansBusinessFeature7 || 'Soporte IA 200 mensajes/mes'}</p>
-            </div>
-            <button
-              onClick={() => onSeleccionarPlan('business')}
-              className="w-full mt-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-            >
-              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$199,900' : '$79.99'}
-            </button>
-          </div>
-          
-          {/* PLAN ELITE */}
-          <div className="bg-slate-800/50 p-4 rounded-xl border border-yellow-500/30">
-            <div className="text-center mb-3">
-              <h4 className="text-xl font-bold text-yellow-400">Elite</h4>
-              <p className="text-2xl font-bold text-white">{moneda.mostrarCOP ? '$499,900' : '$199.99'}<span className="text-sm text-gray-400">/mes</span></p>
-              <p className="text-xs text-yellow-400 mt-1">{t.plansEliteTagline || 'Radar de quiebra'}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature1 || '300 escaneos/mes'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature2 || 'Todo el plan Business'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature3 || 'Radar de quiebra (90 días)'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature4 || 'Alertas predictivas WhatsApp'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature5 || 'Certificado Salud Financiera (QR)'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature6 || '10 usuarios incluidos'}</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> {t.plansEliteFeature7 || 'Soporte IA 500 mensajes/mes'}</p>
-            </div>
-            <button
-              onClick={() => onSeleccionarPlan('elite')}
-              className="w-full mt-4 bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm"
-            >
-              {t.pagar || 'Pagar'} {moneda.mostrarCOP ? '$499,900' : '$199.99'}
-            </button>
-          </div>
-        </div>
-        
-        {/* PAQUETES ADICIONALES DE ESCANEOS */}
-        <div className="mt-4 p-3 bg-slate-800/30 rounded-lg">
-          <p className="text-gray-400 text-xs mb-2 text-center">📦 {t.paquetesEscaneos || 'PAQUETES ADICIONALES DE ESCANEOS'}</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-            <div className="bg-slate-800/50 p-2 rounded text-center">
-              <p className="text-cyan-400 font-bold">{t.paqueteBasico || 'Básico'}</p>
-              <p>{moneda.mostrarCOP ? '$19,900' : '$9.99'}</p>
-              <p className="text-gray-500">+10 {t.escaneos || 'escaneos'}</p>
-            </div>
-            <div className="bg-slate-800/50 p-2 rounded text-center">
-              <p className="text-cyan-400 font-bold">{t.paqueteFrecuente || 'Frecuente'}</p>
-              <p>{moneda.mostrarCOP ? '$49,900' : '$19.99'}</p>
-              <p className="text-gray-500">+30 {t.escaneos || 'escaneos'}</p>
-            </div>
-            <div className="bg-slate-800/50 p-2 rounded text-center">
-              <p className="text-cyan-400 font-bold">{t.paqueteProfesional || 'Profesional'}</p>
-              <p>{moneda.mostrarCOP ? '$99,900' : '$39.99'}</p>
-              <p className="text-gray-500">+100 {t.escaneos || 'escaneos'}</p>
-            </div>
-            <div className="bg-slate-800/50 p-2 rounded text-center">
-              <p className="text-cyan-400 font-bold">{t.paqueteCorporativo || 'Corporativo'}</p>
-              <p>{moneda.mostrarCOP ? '$199,900' : '$79.99'}</p>
-              <p className="text-gray-500">+300 {t.escaneos || 'escaneos'}</p>
-            </div>
-          </div>
-          <p className="text-gray-500 text-xs mt-2 text-center">💡 {t.paquetesNota || 'Los paquetes se compran dentro de la app y NO están incluidos en el plan mensual'}</p>
-        </div>
-        
-        <button
-          onClick={onClose}
-          className="w-full mt-4 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 text-sm"
-        >
-          {t.cancelar || 'Cancelar'}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-  // ============================================================
+    // ============================================================
   // MODAL DE FECHA DE VENCIMIENTO
   // ============================================================
   const ModalFechaVencimiento = ({ isOpen, onClose, onGuardar, onSaltar, producto }) => {
@@ -4481,17 +4325,19 @@ const datosGrafico = [
             {/* Módulo de Producción y Dictamen */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               <ProduccionForm 
-                usuarioActual={usuarioActual} 
-                idioma={idioma} 
-                onSuccess={() => {
-                  setValidationMessage('✅ Producción auditada y cargada al inventario');
-                  setTimeout(() => setValidationMessage(null), 3000);
-                }}
-                onError={(error) => {
-                  setError(error.message);
-                  setTimeout(() => setError(null), 5000);
-                }}
-              />
+  usuarioActual={usuarioActual} 
+  idioma={idioma} 
+  setInventario={setInventario}
+  setMovimientos={setMovimientos}
+  onSuccess={() => {
+    setValidationMessage('✅ Producción auditada y cargada al inventario');
+    setTimeout(() => setValidationMessage(null), 3000);
+  }}
+  onError={(error) => {
+    setError(error.message);
+    setTimeout(() => setError(null), 5000);
+  }}
+/>
 
               <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
                 <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">📋 {t.dictamen}</h2>
@@ -4591,9 +4437,21 @@ const datosGrafico = [
                             {movimiento.fecha ? new Date(movimiento.fecha).toLocaleDateString('es-CO') : 'Hoy'}
                           </p>
                         </div>
-                        <button onClick={() => handleDelete(movimiento.id)} className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 p-2 rounded-lg">
-                          🗑️
-                        </button>
+                        <button 
+  onClick={() => handleDelete(
+    movimiento.id,
+    movimientos,
+    setMovimientos,
+    setInventario,
+    setUsuarioActual,
+    setValidationMessage,
+    setError,
+    setLoading
+  )}
+  className="ml-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 p-2 rounded-lg"
+>
+  🗑️
+</button>
                       </div>
                     </div>
                   ))}
@@ -4629,7 +4487,45 @@ const datosGrafico = [
         </div>
       </footer>
       
-      {/* Modales */}
+            {/* Modales */}
+            {/* Modal de pago con Stripe - OCULTO TEMPORALMENTE */}
+      {/*
+      {mostrarCheckoutStripe && (
+        <CheckoutStripe
+          plan={planSeleccionadoStripe}
+          userEmail={usuarioActual?.email}
+          userId={usuarioActual?.uid}
+          moneda={moneda}
+          onSuccess={() => {
+            setMostrarCheckoutStripe(false);
+            setValidationMessage('✅ Pago exitoso con Stripe. Tu plan ha sido actualizado.');
+            setTimeout(() => setValidationMessage(null), 5000);
+            setTimeout(() => window.location.reload(), 2000);
+          }}
+          onError={(error) => {
+            setMostrarCheckoutStripe(false);
+            setError('Error en el pago con Stripe: ' + error);
+            setTimeout(() => setError(null), 5000);
+          }}
+          onClose={() => setMostrarCheckoutStripe(false)}
+        />
+      )}
+      */}
+
+            {/* Modal Configuración Auditoría */}
+      {mostrarConfigModal && (
+        <div className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center p-4" onClick={() => setMostrarConfigModal(false)}>
+          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <ConfiguracionAuditoria 
+              usuarioActual={usuarioActual} 
+              idioma={idioma} 
+              onClose={() => setMostrarConfigModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Modal Upgrade de Planes */}
       <ModalUpgrade
         isOpen={modalUpgradeOpen}
         onClose={() => setModalUpgradeOpen(false)}
@@ -4641,8 +4537,18 @@ const datosGrafico = [
           setPlanSeleccionadoPago(plan);
           setMostrarCheckout(true);
         }}
+        moneda={moneda}
+        t={t}
+        onComprarCreditosSoporte={(paqueteId, paquete) => {
+          console.log('Comprar paquete de soporte:', paqueteId, paquete);
+          localStorage.setItem('pendingPaqueteSoporte', paqueteId);
+          localStorage.setItem('pendingPaqueteSoporteData', JSON.stringify(paquete));
+          setPlanSeleccionadoPago(`creditos_soporte_${paqueteId}`);
+          setMostrarCheckout(true);
+        }}
       />
       
+      {/* Modal Fecha de Vencimiento */}
       <ModalFechaVencimiento
         isOpen={mostrarModalVencimiento}
         onClose={() => setMostrarModalVencimiento(false)}
@@ -4673,42 +4579,13 @@ const datosGrafico = [
         />
       )}
 
-      {/* Modal de pago con Stripe - OCULTO TEMPORALMENTE */}
-      {/*
-      {mostrarCheckoutStripe && (
-        <CheckoutStripe
-          plan={planSeleccionadoStripe}
-          userEmail={usuarioActual?.email}
-          userId={usuarioActual?.uid}
-          moneda={moneda}
-          onSuccess={() => {
-            setMostrarCheckoutStripe(false);
-            setValidationMessage('✅ Pago exitoso con Stripe. Tu plan ha sido actualizado.');
-            setTimeout(() => setValidationMessage(null), 5000);
-            setTimeout(() => window.location.reload(), 2000);
-          }}
-          onError={(error) => {
-            setMostrarCheckoutStripe(false);
-            setError('Error en el pago con Stripe: ' + error);
-            setTimeout(() => setError(null), 5000);
-          }}
-          onClose={() => setMostrarCheckoutStripe(false)}
-        />
-      )}
-      */}
-
-      {/* Modal Configuración Auditoría */}
-      {mostrarConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4" onClick={() => setMostrarConfigModal(false)}>
-          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-            <ConfiguracionAuditoria 
-              usuarioActual={usuarioActual} 
-              idioma={idioma} 
-              onClose={() => setMostrarConfigModal(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* Bot de Soporte IA */}
+      <SupportBot
+        usuarioActual={usuarioActual}
+        idioma={idioma}
+        plan={usuarioActual?.plan}
+        moneda={moneda}
+      />
     </div>
   );
 };

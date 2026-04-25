@@ -34,7 +34,6 @@ export const crearPreferenciaSuscripcion = async (plan, userEmail, userId, moned
   const planData = planesConfig[plan];
   if (!planData) throw new Error('Plan no válido');
   
-  // Determinar precio según moneda (true = COP, false = USD)
   const esCOP = moneda?.mostrarCOP !== undefined ? moneda.mostrarCOP : true;
   const price = esCOP ? planData.priceCOP : planData.priceUSD;
   const currency = esCOP ? 'COP' : 'USD';
@@ -55,7 +54,7 @@ export const crearPreferenciaSuscripcion = async (plan, userEmail, userId, moned
   });
 
   const data = await response.json();
-  return data.init_point; // URL de checkout
+  return data.init_point;
 };
 
 // Función para verificar el estado de un pago
@@ -65,7 +64,7 @@ export const verificarPago = async (paymentId) => {
   return data;
 };
 
-// Función para crear preferencia de paquete de escaneos (adicional)
+// Función para crear preferencia de paquete de escaneos
 export const crearPreferenciaPaquete = async (paquete, userEmail, userId, moneda) => {
   const paquetesConfig = {
     basico: { escaneos: 10, priceCOP: 19900, priceUSD: 9.99, title: 'Paquete Básico' },

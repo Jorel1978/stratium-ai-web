@@ -1,16 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getFirestore, collection, query, where, orderBy, limit, getCountFromServer, getDocs, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useSoporteIA } from '../hooks/useSoporteIA';
+import ModalCreditosSoporte from './ModalCreditosSoporte';
 
-const SupportBot = ({ usuarioActual, idioma, plan }) => {
+const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [mensajesUsados, setMensajesUsados] = useState(0);
+  const [mostrarModalCreditos, setMostrarModalCreditos] = useState(false);
   const messagesEndRef = useRef(null);
   const db = getFirestore();
   const functions = getFunctions();
+
+  const { 
+    creditosDisponibles, 
+    verificarCredito, 
+    consumirCredito, 
+    getMensajeBloqueo,
+    cargandoCreditos 
+  } = useSoporteIA(usuarioActual);
 
   const planSeguro = plan?.toLowerCase() || 'starter';
   
@@ -96,19 +107,19 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
     let urgencia = '';
     
     if (diasEnStock >= 180) {
-      precio = costoUnitario * 0.8; // 20% menos del costo
+      precio = costoUnitario * 0.8;
       estrategia = '💀 PÉRDIDA CONTROLADA';
       urgencia = '⚠️ URGENTE: más de 180 días';
     } else if (diasEnStock >= 90) {
-      precio = costoUnitario * 0.9; // 10% menos del costo
+      precio = costoUnitario * 0.9;
       estrategia = '💰 RECUPERAR CAPITAL';
       urgencia = '⚠️ Alerta: más de 90 días';
     } else if (diasEnStock >= 60) {
-      precio = costoUnitario * 1.0; // al costo
+      precio = costoUnitario * 1.0;
       estrategia = '📦 AL COSTO';
       urgencia = '⚡ Recupera inversión';
     } else if (diasEnStock >= 30) {
-      precio = costoUnitario * 1.1; // costo + 10%
+      precio = costoUnitario * 1.1;
       estrategia = '🔥 PROMOCIÓN LIGERA';
       urgencia = '💡 Libera flujo de caja';
     } else {
@@ -130,7 +141,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
     if (!usuarioActual?.uid || !nombreProducto) return null;
     
     try {
-      // Buscar el producto en inventario
       const inventarioRef = collection(db, 'inventario');
       const q = query(inventarioRef, 
         where('userId', '==', usuarioActual.uid),
@@ -147,9 +157,8 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
       const diasEnStock = producto.diasEnStock || 0;
       const margenNeto = producto.margenNetoReal || 0;
       const costoUnitario = producto.costoUnitario || 0;
-      const moneda = producto.moneda || 'COP';
+      const monedaProducto = producto.moneda || 'COP';
       
-      // Mensajes según clasificación
       if (clasificacion === 'ESTRELLA') {
         return {
           tipo: 'estrella',
@@ -167,10 +176,9 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
         }
         mensaje += `Este producto está atrapando tu capital en inventario.\n\n`;
         
-        // ✅ Calcular precio sugerido de liquidación
-        const precioLiquidacion = calcularPrecioLiquidacion(costoUnitario, diasEnStock, moneda);
+        const precioLiquidacion = calcularPrecioLiquidacion(costoUnitario, diasEnStock, monedaProducto);
         if (precioLiquidacion) {
-          mensaje += `💰 **Precio sugerido para liquidar:** ${precioLiquidacion.precio.toLocaleString()} ${moneda}\n`;
+          mensaje += `💰 **Precio sugerido para liquidar:** ${precioLiquidacion.precio.toLocaleString()} ${monedaProducto}\n`;
           mensaje += `📊 **Estrategia:** ${precioLiquidacion.estrategia}\n`;
           mensaje += `🔔 **${precioLiquidacion.urgencia}**\n\n`;
           
@@ -188,7 +196,7 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
         return {
           tipo: 'hueso',
           mensaje: mensaje,
-          recomendacion: `Considera vender a ${precioLiquidacion ? precioLiquidacion.precio.toLocaleString() + ' ' + moneda : 'un precio promocional'} para liberar capital rápidamente.`
+          recomendacion: `Considera vender a ${precioLiquidacion ? precioLiquidacion.precio.toLocaleString() + ' ' + monedaProducto : 'un precio promocional'} para liberar capital rápidamente.`
         };
       } else {
         return {
@@ -228,9 +236,7 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
         }
       });
       
-      // Ordenar por días en stock (los más críticos primero)
       productosCriticos.sort((a, b) => b.diasEnStock - a.diasEnStock);
-      
       return productosCriticos;
     } catch (error) {
       console.error('Error listando productos críticos:', error);
@@ -244,7 +250,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
   const procesarPreguntaLocal = async (pregunta) => {
     const preguntaLower = pregunta.toLowerCase();
     
-    // Detectar preguntas sobre un producto específico
     const productoMatch = preguntaLower.match(/(?:qué|como|dime|analiza|diagnostica)\s+(?:es|está|sobre)\s+(?:el producto\s+)?([a-záéíóúñ\s]+)/i);
     if (productoMatch) {
       const nombreProducto = productoMatch[1].trim();
@@ -256,7 +261,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
       }
     }
     
-    // Detectar preguntas sobre productos críticos
     if (preguntaLower.includes('productos críticos') || 
         preguntaLower.includes('productos problema') ||
         preguntaLower.includes('qué productos están mal') ||
@@ -277,7 +281,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
       return respuesta;
     }
     
-    // Detectar preguntas sobre productos estrella
     if (preguntaLower.includes('productos estrella') || 
         preguntaLower.includes('mejores productos') ||
         preguntaLower.includes('qué productos venden más')) {
@@ -308,7 +311,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
       return respuesta;
     }
     
-    // Detectar preguntas sobre salud financiera general
     if (preguntaLower.includes('salud financiera') || 
         preguntaLower.includes('cómo estoy') ||
         preguntaLower.includes('resumen')) {
@@ -330,22 +332,28 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
       return resumen;
     }
     
-    return null; // Si no es una pregunta local, pasar a la IA
+    return null;
   };
 
   const enviarMensaje = async () => {
     if (!input.trim()) return;
     
-    if (mensajesUsados >= limiteMensajes) {
-      const errorMsg = idioma === 'es'
-        ? `⚠️ Has alcanzado el límite de ${limiteMensajes} mensajes de tu plan. Mejora tu plan para más consultas.`
-        : `⚠️ You have reached the ${limiteMensajes} message limit of your plan. Upgrade for more queries.`;
+    // ✅ VERIFICAR CRÉDITOS DE SOPORTE IA
+    const verificacion = await verificarCredito();
+    
+    if (!verificacion.valido) {
+      const mensajeBloqueo = getMensajeBloqueo(idioma);
+      const mensaje = idioma === 'es'
+        ? `⚠️ Has agotado tus consultas de soporte IA de este mes. Te quedan ${creditosDisponibles} consultas disponibles.`
+        : `⚠️ You have exhausted your AI support consultations for this month. You have ${creditosDisponibles} consultations left.`;
+      
       setMessages(prev => [...prev, { 
-        texto: errorMsg, 
+        texto: mensaje, 
         esUsuario: false, 
         fecha: null,
         fechaLocal: obtenerFechaLocal()
       }]);
+      setMostrarModalCreditos(true);
       return;
     }
     
@@ -360,20 +368,14 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
     const preguntaUsuario = input;
     setInput('');
     setLoading(true);
-    
-    // Incrementar contador localmente de inmediato
-    setMensajesUsados(prev => prev + 1);
 
     try {
-      // 🆕 PRIMERO: Intentar responder localmente
       const respuestaLocal = await procesarPreguntaLocal(preguntaUsuario);
       
       let respuestaIA;
       if (respuestaLocal) {
-        // Responder localmente sin llamar a la función de cloud
         respuestaIA = respuestaLocal;
       } else {
-        // Si no es pregunta local, llamar a la IA
         const soporteIA = httpsCallable(functions, 'soporteIA');
         const result = await soporteIA({ 
           pregunta: preguntaUsuario, 
@@ -383,11 +385,6 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
           fechaLocal: fechaLocal
         });
         respuestaIA = result.data.respuesta;
-        
-        // Sincronizar con el valor real del servidor
-        if (result.data.mensajesUsados) {
-          setMensajesUsados(result.data.mensajesUsados);
-        }
       }
 
       const botMessage = { 
@@ -397,11 +394,12 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
         fechaLocal: obtenerFechaLocal()
       };
       setMessages(prev => [...prev, botMessage]);
-
+      
+      // ✅ CONSUMIR CRÉDITO DESPUÉS DE LA RESPUESTA
+      await consumirCredito();
+      
     } catch (error) {
       console.error('Error en soporte:', error);
-      // Revertir contador en caso de error
-      setMensajesUsados(prev => prev - 1);
       const errorMessage = idioma === 'es' 
         ? 'Lo siento, hubo un error. Por favor intenta de nuevo más tarde.'
         : 'Sorry, there was an error. Please try again later.';
@@ -432,6 +430,12 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Actualizar créditos cuando cambia el modal de créditos
+  const handleCompraExitosa = () => {
+    setMostrarModalCreditos(false);
+    window.location.reload();
+  };
+
   return (
     <>
       <button
@@ -456,6 +460,13 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
                 <p>🤖 {idioma === 'es' ? 'Hola, soy tu asistente IA de STRATIUM AI' : 'Hello, I am your AI assistant from STRATIUM AI'}</p>
                 <p className="text-sm mt-2">{idioma === 'es' ? 'Pregúntame sobre finanzas, costos o cómo usar la plataforma' : 'Ask me about finances, costs, or how to use the platform'}</p>
                 <p className="text-xs text-cyan-400 mt-4">💡 {idioma === 'es' ? `Plan actual: ${planSeguro.toUpperCase()} - ${limiteMensajes} mensajes/mes` : `Current plan: ${planSeguro.toUpperCase()} - ${limiteMensajes} messages/month`}</p>
+                {!cargandoCreditos && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {idioma === 'es' 
+                      ? `💬 Consultas restantes: ${creditosDisponibles >= 999999 ? '∞' : creditosDisponibles}`
+                      : `💬 Remaining consultations: ${creditosDisponibles >= 999999 ? '∞' : creditosDisponibles}`}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-2">📋 {idioma === 'es' ? 'Ejemplos de preguntas:' : 'Example questions:'}</p>
                 <p className="text-xs text-gray-400">• {idioma === 'es' ? '¿Cómo está mi producto Camisa?' : 'How is my product Shirt?'}</p>
                 <p className="text-xs text-gray-400">• {idioma === 'es' ? '¿Qué productos son críticos?' : 'Which products are critical?'}</p>
@@ -506,12 +517,32 @@ const SupportBot = ({ usuarioActual, idioma, plan }) => {
                 {idioma === 'es' ? 'Enviar' : 'Send'}
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
-              {mensajesUsados}/{limiteMensajes} {idioma === 'es' ? 'mensajes este mes' : 'messages this month'}
-            </p>
+            <div className="flex justify-between items-center mt-2">
+              <p className="text-xs text-gray-500">
+                {mensajesUsados}/{limiteMensajes} {idioma === 'es' ? 'mensajes este mes' : 'messages this month'}
+              </p>
+              {!cargandoCreditos && creditosDisponibles < 10 && creditosDisponibles >= 0 && (
+                <button
+                  onClick={() => setMostrarModalCreditos(true)}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 underline"
+                >
+                  {idioma === 'es' ? '+ Comprar créditos' : '+ Buy credits'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
+
+      {/* Modal de compra de créditos */}
+      <ModalCreditosSoporte
+        isOpen={mostrarModalCreditos}
+        onClose={() => setMostrarModalCreditos(false)}
+        usuarioActual={usuarioActual}
+        moneda={moneda}
+        idioma={idioma}
+        onCompraExitosa={handleCompraExitosa}
+      />
     </>
   );
 };
