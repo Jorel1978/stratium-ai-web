@@ -4,11 +4,17 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
   const [loading, setLoading] = useState(false);
 
   // ✅ PLANES DE SUSCRIPCIÓN (COP y USD)
-  const planData = {
+    const planData = {
     starter: { title: 'STRATIUM AI - Plan Starter', priceCOP: 29900, priceUSD: 9.99 },
     pro: { title: 'STRATIUM AI - Plan Pro', priceCOP: 79900, priceUSD: 29.99 },
     business: { title: 'STRATIUM AI - Plan Business', priceCOP: 199900, priceUSD: 79.99 },
-    elite: { title: 'STRATIUM AI - Plan Elite', priceCOP: 499900, priceUSD: 199.99 }
+    elite: { title: 'STRATIUM AI - Plan Elite', priceCOP: 499900, priceUSD: 199.99 },
+    
+    // ✅ PAQUETES ADICIONALES DE ESCANEOS
+    pack_basico: { title: 'Pack Básico - 10 Escaneos Adicionales', priceCOP: 19900, priceUSD: 9.99 },
+    pack_frecuente: { title: 'Pack Frecuente - 30 Escaneos Adicionales', priceCOP: 49900, priceUSD: 19.99 },
+    pack_profesional: { title: 'Pack Profesional - 100 Escaneos Adicionales', priceCOP: 99900, priceUSD: 39.99 },
+    pack_corporativo: { title: 'Pack Corporativo - 300 Escaneos Adicionales', priceCOP: 199900, priceUSD: 79.99 }
   };
 
   // ✅ PAQUETES DE CRÉDITOS PARA SOPORTE IA (COP y USD)
@@ -18,7 +24,7 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
     'creditos_soporte_profesional': { title: 'Pack Profesional - Créditos Soporte IA', creditos: 40, priceCOP: 49900, priceUSD: 19.99 },
     'creditos_soporte_empresarial': { title: 'Pack Empresarial - Créditos Soporte IA', creditos: 100, priceCOP: 99900, priceUSD: 39.99 }
   };
-
+  
   // Detectar si es un paquete de soporte o un plan normal
   const esPaqueteSoporte = plan?.startsWith('creditos_soporte_');
   

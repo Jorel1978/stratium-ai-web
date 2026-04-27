@@ -112,10 +112,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const detectarUbicacion = async () => {
       try {
-        const res = await fetch('https://ipapi.co/json/');
+        const res = await fetch('https://api.country.is/');
         const data = await res.json();
-        dispatch({ type: 'SET_MONEDA', payload: data.country_code !== 'CO' ? { simbolo: 'USD $', codigo: 'USD', mostrarCOP: false } : { simbolo: '$', codigo: 'COP', mostrarCOP: true } });
-      } catch { dispatch({ type: 'SET_MONEDA', payload: { simbolo: '$', codigo: 'COP', mostrarCOP: true } }); }
+        dispatch({ type: 'SET_MONEDA', payload: data.country !== 'CO' 
+          ? { simbolo: 'USD $', codigo: 'USD', mostrarCOP: false }
+          : { simbolo: '$', codigo: 'COP', mostrarCOP: true } });
+      } catch { 
+        dispatch({ type: 'SET_MONEDA', payload: { simbolo: '$', codigo: 'COP', mostrarCOP: true } }); 
+      }
     };
     detectarUbicacion();
   }, []);

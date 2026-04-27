@@ -5,7 +5,10 @@ const Header = ({
   exportarACSV, generarReportePDF, generarReportePreview,
   seleccionarImagenFactura, handleFileUpload, subiendoArchivo, procesandoOCR,
   puedeAccederAFuncion, setMostrarLogsEliminaciones, mostrarLogsEliminaciones,
-  generandoReporte
+  generandoReporte,
+  onChangeIdioma,    // ✅ Recibe la función
+  handleLogout,      // ✅ Recibe el logout
+  abrirModalPlanes   // ✅ Recibe la función para abrir planes
 }) => {
   return (
     <header className="py-6 px-4 border-b border-blue-900/30 sticky top-0 bg-[#0f172a]/95 backdrop-blur-sm z-10">
@@ -15,40 +18,37 @@ const Header = ({
         </h1>
         
         <div className="flex items-center gap-4 flex-wrap">
-          {/* Selector de idioma */}
-          <div className="relative">
-            <select
-              value={t.idioma || 'es'}
-              onChange={(e) => window.dispatchEvent(new CustomEvent('changeLang', { detail: e.target.value }))}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-            >
-              <option value="es">🇪🇸 Español</option>
-              <option value="en">🇺🇸 English</option>
-            </select>
-          </div>
+          {/* Selector de idioma - FUNCIONAL */}
+          <select
+            onChange={(e) => onChangeIdioma(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          >
+            <option value="es">🇪🇸 Español</option>
+            <option value="en">🇺🇸 English</option>
+          </select>
 
-          {/* Indicador de plan */}
-          <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-            usuarioActual?.plan === 'gratis' ? 'bg-gray-600/30 text-gray-400' :
-            usuarioActual?.plan === 'pro' ? 'bg-cyan-500/20 text-cyan-400' :
-            usuarioActual?.plan === 'business' ? 'bg-purple-500/20 text-purple-400' :
-            'bg-yellow-500/20 text-yellow-400'
-          }`}>
+          {/* Indicador de plan - CLICKEABLE para abrir modal */}
+          <button
+            onClick={abrirModalPlanes}
+            className={`px-3 py-1 rounded-full text-xs font-bold cursor-pointer hover:opacity-80 transition-all ${
+              usuarioActual?.plan === 'gratis' ? 'bg-gray-600/30 text-gray-400' :
+              usuarioActual?.plan === 'pro' ? 'bg-cyan-500/20 text-cyan-400' :
+              usuarioActual?.plan === 'business' ? 'bg-purple-500/20 text-purple-400' :
+              'bg-yellow-500/20 text-yellow-400'
+            }`}
+          >
             {usuarioActual?.plan === 'gratis' ? 'Starter' :
-             usuarioActual?.plan === 'pro' ? 'Plan 1' :
-             usuarioActual?.plan === 'business' ? 'Plan 2' : 'Plan 3'}
-          </div>
+             usuarioActual?.plan === 'pro' ? 'Pro' :
+             usuarioActual?.plan === 'business' ? 'Business' : 'Elite'}
+          </button>
 
           {/* Indicador de créditos OCR */}
           <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-            usuarioActual?.plan === 'elite' ? 'bg-yellow-500/20 text-yellow-400' :
             (usuarioActual?.creditosOCR || 0) - (usuarioActual?.creditosUsados || 0) > 0 
               ? 'bg-green-500/20 text-green-400' 
               : 'bg-red-500/20 text-red-400'
           }`}>
-            📷 {usuarioActual?.plan === 'elite' 
-              ? `${(usuarioActual?.creditosOCR || 500) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 500}` 
-              : `${(usuarioActual?.creditosOCR || 0) - (usuarioActual?.creditosUsados || 0)}/${usuarioActual?.creditosOCR || 0}`} escaneos
+            📷 {(usuarioActual?.creditosOCR || 0) - (usuarioActual?.creditosUsados || 0)}/{usuarioActual?.creditosOCR || 0} escaneos
           </div>
 
           {/* Email del usuario */}
@@ -63,73 +63,51 @@ const Header = ({
           <button
             onClick={generarReportePDF}
             disabled={generandoReporte || movimientos?.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
-              !puedeAccederAFuncion?.('puedeGenerarPDF')
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                : generandoReporte || movimientos?.length === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30'
-            }`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30"
           >
-            <span>📊</span>
-            <span className="hidden sm:inline">{generandoReporte ? 'Generando...' : 'Reporte PDF'}</span>
+            📊 {generandoReporte ? 'Generando...' : 'Reporte PDF'}
           </button>
 
           {/* Botón Exportar CSV */}
           <button
             onClick={exportarACSV}
             disabled={movimientos?.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${
-              !puedeAccederAFuncion?.('puedeExportarExcel')
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                : movimientos?.length === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30'
-            }`}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/30"
           >
-            <span>📎</span>
-            <span className="hidden sm:inline">Exportar CSV</span>
+            📎 Exportar CSV
           </button>
 
-          {/* Botón Adjuntar documento */}
-          <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 ${subiendoArchivo ? 'opacity-50 cursor-wait' : ''}`}>
-            <span>📎</span>
-            <span className="hidden sm:inline">{subiendoArchivo ? 'Subiendo...' : 'Adjuntar'}</span>
+          {/* Botón Adjuntar */}
+          <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer">
+            📎 Adjuntar
             <input type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png" disabled={subiendoArchivo} />
           </label>
 
-          {/* Botón Escanear factura (OCR) */}
+          {/* Botón Escanear */}
           <button
             onClick={seleccionarImagenFactura}
             disabled={procesandoOCR}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30 transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/30"
           >
-            <span>{procesandoOCR ? '⏳' : '📷'}</span>
-            <span className="hidden sm:inline">{procesandoOCR ? 'Procesando...' : 'Escanear'}</span>
+            {procesandoOCR ? '⏳ Procesando...' : '📷 Escanear'}
           </button>
 
-          {/* Botón Logs de eliminaciones (solo Business/Elite) */}
-          {puedeAccederAFuncion?.('puedeVerLogs') && (
+          {/* Logs (solo premium) */}
+          {puedeAccederAFuncion('puedeVerLogs') && (
             <button
-              onClick={() => setMostrarLogsEliminaciones?.(!mostrarLogsEliminaciones)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 transition-all"
+              onClick={() => setMostrarLogsEliminaciones(!mostrarLogsEliminaciones)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30"
             >
-              <span>📋</span>
-              <span className="hidden sm:inline">Logs</span>
+              📋 Logs
             </button>
           )}
 
-          {/* Botón Cerrar Sesión */}
+          {/* Cerrar Sesión */}
           <button
-            onClick={async () => {
-              const { handleLogout } = await import('../../context/AppContext');
-              // Esto se conectará con el contexto
-              window.dispatchEvent(new CustomEvent('logout'));
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 transition-all"
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30"
           >
-            <span>🚪</span>
-            <span className="hidden sm:inline">Cerrar</span>
+            🚪 Cerrar
           </button>
 
           {/* Estado de conexión */}

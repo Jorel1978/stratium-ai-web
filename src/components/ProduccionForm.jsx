@@ -7,7 +7,7 @@ import { useAuditEngine } from '../hooks/useAuditEngine';
 import { generarDictamenEspecialista } from '../util/auditoriaDiagnostico';
 import { useCargarProduccion } from '../hooks/useCargarProduccion';
 
-const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventario, setMovimientos }) => {
+const ProduccionForm = ({ usuarioActual, idioma, t, onSuccess, onError, setInventario, setMovimientos }) => {
   const [formData, setFormData] = useState({
     nombreProducto: '',
     unidadesProducidas: 1,
@@ -26,6 +26,9 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
   const db = getFirestore();
   const { auditarProduccion, configuracion, cargandoConfig } = useAuditEngine(usuarioActual);
   const { cargarAInventario } = useCargarProduccion(usuarioActual);
+
+  // Si t no existe, usar objeto por defecto
+  const safeT = t || {};
 
   const formatMoney = (valor, moneda = 'COP') => {
     const opciones = {
@@ -114,7 +117,12 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
     }
   };
 
-  const t = textos[idioma] || textos.es;
+  const langTexts = textos[idioma] || textos.es;
+  
+  // Usar safeT si tiene las propiedades, sino usar langTexts
+  const getText = (key) => {
+    return safeT[key] || langTexts[key] || key;
+  };
 
   const handleCalcularAuditoria = async () => {
     setCalculando(true);
@@ -191,18 +199,18 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
 
   return (
     <div className="bg-[#1e293b] rounded-2xl p-6 mb-8 border border-blue-900/30">
-      <h3 className="text-xl font-bold text-white mb-2">{t.titulo}</h3>
-      <p className="text-gray-400 text-sm mb-4">{t.subtitulo}</p>
+      <h3 className="text-xl font-bold text-white mb-2">{getText('produccion') || '🏭 Auditoría de Producción v2.1'}</h3>
+      <p className="text-gray-400 text-sm mb-4">{getText('produccion') || 'Análisis de rentabilidad real con costos ocultos'}</p>
       
       {mostrarConfigAlert && (
         <div className="mb-6 p-4 bg-yellow-900/30 border border-yellow-500/30 rounded-xl">
-          <p className="text-yellow-400 font-bold mb-2">{t.sinConfiguracion}</p>
-          <p className="text-yellow-200 text-sm mb-3">{t.configNecesaria}</p>
+          <p className="text-yellow-400 font-bold mb-2">{getText('sinConfiguracion')}</p>
+          <p className="text-yellow-200 text-sm mb-3">{getText('configNecesaria')}</p>
           <button
             onClick={() => setMostrarConfigAlert(false)}
             className="text-cyan-400 text-sm underline"
           >
-            {t.irAConfiguracion}
+            {getText('irAConfiguracion')}
           </button>
         </div>
       )}
@@ -210,7 +218,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
       <form onSubmit={(e) => { e.preventDefault(); handleCargarProduccion(); }} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
-            <label className="block text-gray-400 text-sm mb-1">{t.nombre}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('nombre') || 'Nombre del Producto'}</label>
             <input
               type="text"
               value={formData.nombreProducto}
@@ -221,7 +229,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.unidades}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('unidades') || 'Unidades a producir'}</label>
             <input
               type="number"
               value={formData.unidadesProducidas}
@@ -234,7 +242,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.materiales}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('materiales') || 'Inversión en Materiales'}</label>
             <input
               type="number"
               value={formData.materialesTotal}
@@ -246,7 +254,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.horas}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('horas') || 'Horas de Trabajo (totales)'}</label>
             <input
               type="number"
               value={formData.horasLaborTotal}
@@ -258,7 +266,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.valorHora}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('valorHora') || 'Valor Hora (opcional)'}</label>
             <input
               type="number"
               value={formData.valorHoraPersonalizado}
@@ -270,7 +278,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.transporte}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('transporte') || 'Gastos de Transporte'}</label>
             <input
               type="number"
               value={formData.transporteTotal}
@@ -281,7 +289,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           </div>
           
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.precioVenta}</label>
+            <label className="block text-gray-400 text-sm mb-1">{getText('precioVenta') || 'Precio de Venta (unitario)'}</label>
             <input
               type="number"
               value={formData.precioVentaUnitario}
@@ -299,33 +307,33 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
           disabled={calculando}
           className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50"
         >
-          {calculando ? t.calculando : t.validar}
+          {calculando ? (getText('calculando') || 'Auditando...') : (getText('validar') || '🔍 Auditar Rentabilidad')}
         </button>
         
-        {/* Resultado de auditoría - CORREGIDO */}
+        {/* Resultado de auditoría */}
         {resultadoAuditoria && !resultadoAuditoria.error && (
           <div className={`p-4 rounded-lg border-2 ${resultadoAuditoria.aprobado ? 'bg-green-900/30 border-green-500/50' : 'bg-red-900/30 border-red-500/50'}`}>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <p className="text-gray-400 text-xs">{t.costoBase}</p>
+                <p className="text-gray-400 text-xs">{getText('costoBase') || 'Costo Base por unidad'}</p>
                 <p className="text-lg font-bold text-white">
                   {formatMoney(resultadoAuditoria.costoUnitarioBase, resultadoAuditoria.configuracion?.moneda)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs">{t.costoCargado}</p>
+                <p className="text-gray-400 text-xs">{getText('costoCargado') || 'Costo Real Cargado'}</p>
                 <p className="text-lg font-bold text-orange-400">
                   {formatMoney(resultadoAuditoria.costoUnitarioCargado, resultadoAuditoria.configuracion?.moneda)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs">{t.ingresoNeto}</p>
+                <p className="text-gray-400 text-xs">{getText('ingresoNeto') || 'Ingreso Neto por unidad'}</p>
                 <p className="text-lg font-bold text-cyan-400">
                   {formatMoney(resultadoAuditoria.ingresoNetoUnitario, resultadoAuditoria.configuracion?.moneda)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-400 text-xs">{t.margen}</p>
+                <p className="text-gray-400 text-xs">{getText('margen') || 'Margen Neto Real'}</p>
                 <p className={`text-2xl font-bold ${resultadoAuditoria.color}`}>
                   {resultadoAuditoria.margenNetoReal}%
                 </p>
@@ -339,7 +347,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
             
             {resultadoAuditoria.hallazgosEspecialistas && resultadoAuditoria.hallazgosEspecialistas.length > 0 && (
               <div className="mb-3 p-2 bg-red-900/30 rounded-lg border-l-4 border-red-500">
-                <p className="text-red-400 text-xs font-bold mb-1">{t.dictamenEspecialista}:</p>
+                <p className="text-red-400 text-xs font-bold mb-1">{getText('dictamenEspecialista') || '🔍 Dictamen del Especialista'}:</p>
                 {resultadoAuditoria.hallazgosEspecialistas.map((hallazgo, idx) => (
                   <p key={idx} className="text-red-200 text-xs mb-1">{hallazgo}</p>
                 ))}
@@ -358,7 +366,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
             
             {resultadoAuditoria.alertas && resultadoAuditoria.alertas.length > 0 && (
               <div className="mb-3 p-2 bg-yellow-900/30 rounded-lg">
-                <p className="text-yellow-400 text-xs font-bold mb-1">{t.alertas}</p>
+                <p className="text-yellow-400 text-xs font-bold mb-1">{getText('alertas') || 'Alertas de Auditoría'}</p>
                 {resultadoAuditoria.alertas.map((alerta, idx) => (
                   <p key={idx} className="text-yellow-200 text-xs">{alerta}</p>
                 ))}
@@ -366,14 +374,14 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
             )}
             
             <details className="text-xs text-gray-400">
-              <summary className="cursor-pointer">{t.detalles}</summary>
+              <summary className="cursor-pointer">{getText('detalles') || 'Desglose de costos'}</summary>
               <div className="mt-2 space-y-1 pl-2">
-                <p>{t.materialesLabel}: {formatMoney(resultadoAuditoria.desglose?.materiales, resultadoAuditoria.configuracion?.moneda)}</p>
-                <p>{t.manoObraLabel}: {formatMoney(resultadoAuditoria.desglose?.manoObra, resultadoAuditoria.configuracion?.moneda)}</p>
-                <p>{t.transporteLabel}: {formatMoney(resultadoAuditoria.desglose?.transporte, resultadoAuditoria.configuracion?.moneda)}</p>
-                <p>{t.gastosFijosLabel}: {formatMoney(resultadoAuditoria.desglose?.gastosFijosAplicados, resultadoAuditoria.configuracion?.moneda)}</p>
-                <p>{t.devolucionesLabel}: {formatMoney(resultadoAuditoria.desglose?.logisticaInversaUnitaria, resultadoAuditoria.configuracion?.moneda)}</p>
-                <p>{t.comisionesLabel}: {formatMoney((resultadoAuditoria.desglose?.comisionBase || 0) + (resultadoAuditoria.desglose?.ivaComision || 0) + (resultadoAuditoria.desglose?.retenciones || 0), resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('materialesLabel') || 'Materiales'}: {formatMoney(resultadoAuditoria.desglose?.materiales, resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('manoObraLabel') || 'Mano de obra (con prestaciones)'}: {formatMoney(resultadoAuditoria.desglose?.manoObra, resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('transporteLabel') || 'Transporte'}: {formatMoney(resultadoAuditoria.desglose?.transporte, resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('gastosFijosLabel') || 'Gastos fijos aplicados'}: {formatMoney(resultadoAuditoria.desglose?.gastosFijosAplicados, resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('devolucionesLabel') || 'Provisión devoluciones'}: {formatMoney(resultadoAuditoria.desglose?.logisticaInversaUnitaria, resultadoAuditoria.configuracion?.moneda)}</p>
+                <p>{getText('comisionesLabel') || 'Comisiones y tasas'}: {formatMoney((resultadoAuditoria.desglose?.comisionBase || 0) + (resultadoAuditoria.desglose?.ivaComision || 0) + (resultadoAuditoria.desglose?.retenciones || 0), resultadoAuditoria.configuracion?.moneda)}</p>
               </div>
             </details>
           </div>
@@ -395,7 +403,7 @@ const ProduccionForm = ({ usuarioActual, idioma, onSuccess, onError, setInventar
               : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg'
           }`}
         >
-          {loading ? t.guardando : t.guardar}
+          {loading ? (getText('guardando') || 'Cargando...') : (getText('guardar') || '📦 Cargar a Inventario')}
         </button>
       </form>
       

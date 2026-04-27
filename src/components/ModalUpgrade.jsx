@@ -42,10 +42,10 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">🔒</div>
-          <h3 className="text-xl font-bold text-white">{t?.upgradeTitle || 'Desbloquea Stratium AI'}</h3>
+          <div className="text-5xl mb-3">🚀</div>
+          <h3 className="text-2xl font-bold text-white">Elige tu plan STRATIUM AI</h3>
           <p className="text-gray-400 text-sm mt-2">
-            {funcionNombre} - {t?.upgradeDescription || 'Elige el plan que se adapte a tu crecimiento'}
+            Selecciona el plan que mejor se adapte a tu negocio
           </p>
         </div>
         
@@ -59,13 +59,13 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
               <p className="text-xs text-green-400 mt-1">Consejero financiero de bolsillo</p>
             </div>
             <div className="space-y-2 text-sm flex-grow">
-              <p className="text-gray-300"><span className="text-green-400">✓</span> 10 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Registro manual de movimientos</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Dashboard financiero básico</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Alertas de riesgo</p>
-              <p className="text-gray-300"><span className="text-green-400">✓</span> Soporte IA 20 mensajes/mes</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin reportes PDF</p>
-              <p className="text-gray-400"><span className="text-green-400">✗</span> Sin exportar CSV</p>
+              <p className="text-gray-300">✓ 10 escaneos/mes</p>
+              <p className="text-gray-300">✓ Registro manual de movimientos</p>
+              <p className="text-gray-300">✓ Dashboard financiero básico</p>
+              <p className="text-gray-300">✓ Alertas de riesgo</p>
+              <p className="text-gray-300">✓ Soporte IA 20 mensajes/mes</p>
+              <p className="text-gray-500">✗ Sin reportes PDF</p>
+              <p className="text-gray-500">✗ Sin exportar CSV</p>
             </div>
             <button
               onClick={() => handleSeleccionarPlan('starter')}
@@ -83,14 +83,14 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
               <p className="text-xs text-cyan-400 mt-1">Digitalización inteligente</p>
             </div>
             <div className="space-y-2 text-sm flex-grow">
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> 30 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Registro manual ilimitado</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Reportes PDF completos</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Exportar CSV</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Comparación mensual</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Punto de equilibrio</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Rotación de inventario</p>
-              <p className="text-gray-300"><span className="text-cyan-400">✓</span> Soporte IA 50 mensajes/mes</p>
+              <p className="text-gray-300">✓ 30 escaneos/mes</p>
+              <p className="text-gray-300">✓ Registro manual ilimitado</p>
+              <p className="text-gray-300">✓ Reportes PDF completos</p>
+              <p className="text-gray-300">✓ Exportar CSV</p>
+              <p className="text-gray-300">✓ Comparación mensual</p>
+              <p className="text-gray-300">✓ Punto de equilibrio</p>
+              <p className="text-gray-300">✓ Rotación de inventario</p>
+              <p className="text-gray-300">✓ Soporte IA 50 mensajes/mes</p>
             </div>
             <button
               onClick={() => handleSeleccionarPlan('pro')}
@@ -102,7 +102,7 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
           
           {/* PLAN BUSINESS */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-purple-500/30 relative flex flex-col h-full">
-            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full whitespace-nowrap">
+            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-3 py-0.5 rounded-full">
               Más popular
             </div>
             <div className="text-center mb-3 mt-2">
@@ -111,13 +111,13 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
               <p className="text-xs text-purple-400 mt-1">Auditoría de sobrecostos</p>
             </div>
             <div className="space-y-2 text-sm flex-grow">
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> 120 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Todo el plan Pro</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Auditoría forense de gastos</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Detección de sobrecostos de proveedores</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> 3 usuarios incluidos</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Historial de eliminaciones</p>
-              <p className="text-gray-300"><span className="text-purple-400">✓</span> Soporte IA 200 mensajes/mes</p>
+              <p className="text-gray-300">✓ 120 escaneos/mes</p>
+              <p className="text-gray-300">✓ Todo el plan Pro</p>
+              <p className="text-gray-300">✓ Auditoría forense de gastos</p>
+              <p className="text-gray-300">✓ Detección de sobrecostos de proveedores</p>
+              <p className="text-gray-300">✓ 3 usuarios incluidos</p>
+              <p className="text-gray-300">✓ Historial de eliminaciones</p>
+              <p className="text-gray-300">✓ Soporte IA 200 mensajes/mes</p>
             </div>
             <button
               onClick={() => handleSeleccionarPlan('business')}
@@ -135,13 +135,13 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
               <p className="text-xs text-yellow-400 mt-1">Radar de quiebra</p>
             </div>
             <div className="space-y-2 text-sm flex-grow">
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 300 escaneos/mes</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Todo el plan Business</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Radar de quiebra (90 días)</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Alertas predictivas WhatsApp</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Certificado Salud Financiera (QR)</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> 10 usuarios incluidos</p>
-              <p className="text-gray-300"><span className="text-yellow-400">✓</span> Soporte IA 500 mensajes/mes</p>
+              <p className="text-gray-300">✓ 300 escaneos/mes</p>
+              <p className="text-gray-300">✓ Todo el plan Business</p>
+              <p className="text-gray-300">✓ Radar de quiebra (90 días)</p>
+              <p className="text-gray-300">✓ Alertas predictivas WhatsApp</p>
+              <p className="text-gray-300">✓ Certificado Salud Financiera (QR)</p>
+              <p className="text-gray-300">✓ 10 usuarios incluidos</p>
+              <p className="text-gray-300">✓ Soporte IA 500 mensajes/mes</p>
             </div>
             <button
               onClick={() => handleSeleccionarPlan('elite')}
@@ -151,47 +151,71 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
             </button>
           </div>
         </div>
-        
+
         {/* PAQUETES ADICIONALES DE ESCANEOS */}
         <div className="mt-6 p-4 bg-slate-800/30 rounded-lg">
-          <p className="text-gray-400 text-xs mb-3 text-center">📦 PAQUETES ADICIONALES DE ESCANEOS</p>
+          <p className="text-cyan-400 text-xs mb-3 text-center font-bold">📦 PAQUETES ADICIONALES DE ESCANEOS</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div className="bg-slate-800/50 p-3 rounded text-center">
-              <p className="text-cyan-400 font-bold">Básico</p>
-              <p className="text-white text-lg font-bold">{moneda?.mostrarCOP ? '$19,900' : '$9.99'}</p>
-              <p className="text-gray-500">+10 escaneos</p>
+              <p className="text-yellow-400 font-bold">Básico</p>
+              <p className="text-white text-lg font-bold">+10 escaneos</p>
+              <p className="text-gray-400">{moneda?.mostrarCOP ? '$19,900' : '$9.99'}</p>
+              <button
+                onClick={() => onComprarCreditosSoporte?.('pack_basico', { escaneos: 10, precioCOP: 19900, precioUSD: 9.99 })}
+                className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs"
+              >
+                Comprar
+              </button>
             </div>
             <div className="bg-slate-800/50 p-3 rounded text-center">
-              <p className="text-cyan-400 font-bold">Frecuente</p>
-              <p className="text-white text-lg font-bold">{moneda?.mostrarCOP ? '$49,900' : '$19.99'}</p>
-              <p className="text-gray-500">+30 escaneos</p>
+              <p className="text-yellow-400 font-bold">Frecuente</p>
+              <p className="text-white text-lg font-bold">+30 escaneos</p>
+              <p className="text-gray-400">{moneda?.mostrarCOP ? '$49,900' : '$19.99'}</p>
+              <button
+                onClick={() => onComprarCreditosSoporte?.('pack_frecuente', { escaneos: 30, precioCOP: 49900, precioUSD: 19.99 })}
+                className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs"
+              >
+                Comprar
+              </button>
             </div>
             <div className="bg-slate-800/50 p-3 rounded text-center">
-              <p className="text-cyan-400 font-bold">Profesional</p>
-              <p className="text-white text-lg font-bold">{moneda?.mostrarCOP ? '$99,900' : '$39.99'}</p>
-              <p className="text-gray-500">+100 escaneos</p>
+              <p className="text-yellow-400 font-bold">Profesional</p>
+              <p className="text-white text-lg font-bold">+100 escaneos</p>
+              <p className="text-gray-400">{moneda?.mostrarCOP ? '$99,900' : '$39.99'}</p>
+              <button
+                onClick={() => onComprarCreditosSoporte?.('pack_profesional', { escaneos: 100, precioCOP: 99900, precioUSD: 39.99 })}
+                className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs"
+              >
+                Comprar
+              </button>
             </div>
             <div className="bg-slate-800/50 p-3 rounded text-center">
-              <p className="text-cyan-400 font-bold">Corporativo</p>
-              <p className="text-white text-lg font-bold">{moneda?.mostrarCOP ? '$199,900' : '$79.99'}</p>
-              <p className="text-gray-500">+300 escaneos</p>
+              <p className="text-yellow-400 font-bold">Corporativo</p>
+              <p className="text-white text-lg font-bold">+300 escaneos</p>
+              <p className="text-gray-400">{moneda?.mostrarCOP ? '$199,900' : '$79.99'}</p>
+              <button
+                onClick={() => onComprarCreditosSoporte?.('pack_corporativo', { escaneos: 300, precioCOP: 199900, precioUSD: 79.99 })}
+                className="w-full mt-2 bg-gradient-to-r from-yellow-500 to-orange-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs"
+              >
+                Comprar
+              </button>
             </div>
           </div>
           <p className="text-gray-500 text-xs mt-3 text-center">💡 Los paquetes se compran dentro de la app y NO están incluidos en el plan mensual</p>
         </div>
 
-        {/* 🆕 PAQUETES ADICIONALES DE CRÉDITOS PARA SOPORTE IA CON BOTONES */}
+        {/* PAQUETES DE CRÉDITOS PARA SOPORTE IA */}
         <div className="mt-6 p-4 bg-slate-800/30 rounded-lg">
-          <p className="text-gray-400 text-xs mb-3 text-center">💬 CRÉDITOS ADICIONALES PARA SOPORTE IA</p>
+          <p className="text-purple-400 text-xs mb-3 text-center font-bold">💬 CRÉDITOS ADICIONALES PARA SOPORTE IA</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             {paquetesSoporte.map((paquete) => (
               <div key={paquete.id} className="bg-slate-800/50 p-3 rounded text-center">
                 <p className="text-purple-400 font-bold">{paquete.nombre}</p>
-                <p className="text-white text-lg font-bold">{moneda?.mostrarCOP ? `$${paquete.precioCOP.toLocaleString()}` : `$${paquete.precioUSD}`}</p>
-                <p className="text-gray-500">+{paquete.creditos} consultas IA</p>
+                <p className="text-white text-lg font-bold">+{paquete.creditos} consultas IA</p>
+                <p className="text-gray-400">{moneda?.mostrarCOP ? `$${paquete.precioCOP.toLocaleString()}` : `$${paquete.precioUSD}`}</p>
                 <button
                   onClick={() => onComprarCreditosSoporte?.(paquete.id, paquete)}
-                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-1.5 px-2 rounded-lg transition-all text-xs"
+                  className="w-full mt-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-bold py-1.5 px-2 rounded-lg text-xs"
                 >
                   Comprar
                 </button>
@@ -213,4 +237,3 @@ const ModalUpgrade = ({ isOpen, onClose, funcionNombre, onSeleccionarPlan, moned
 };
 
 export default ModalUpgrade;
-
