@@ -980,7 +980,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [validationMessage, setValidationMessage] = useState(null);
   const [generandoReporte, setGenerandoReporte] = useState(false);
-  const [loading, setLoading] = useState(false);  // ← AGREGAR AQUÍ
+  const [loading, setLoading] = useState(false);
 
   // Estado para el módulo de producción
   const [produccion, setProduccion] = useState({
@@ -1076,12 +1076,36 @@ const App = () => {
   // ✅ Estado para el input mágico (mantenido para compatibilidad)
   const [inputValue, setInputValue] = useState('');
 
-    // ✅ NUEVO ESTADO PARA MODAL DE CONFIGURACIÓN DE AUDITORÍA
+  // ✅ NUEVO ESTADO PARA MODAL DE CONFIGURACIÓN DE AUDITORÍA
   const [mostrarConfigModal, setMostrarConfigModal] = useState(false);
+  
+  // ✅ NUEVOS ESTADOS PARA ACORDEONES (MOBILE)
+  const [showAuditoria, setShowAuditoria] = useState(false);
+  const [showProduccion, setShowProduccion] = useState(false);
+  const [showRegistroManual, setShowRegistroManual] = useState(false);
+  
+  // ✅ FUNCIÓN PARA VERIFICAR ACCESO POR PLAN (DEFINIDA DENTRO DE App)
+  const puedeAccederAFuncion = (funcion) => {
+    try {
+      const limites = obtenerLimitesPlan();
+      return limites && limites[funcion] === true;
+    } catch (e) {
+      return false;
+    }
+  };
+  
+  // ✅ FUNCIÓN PARA CALCULAR DÍAS RESTANTES DE PRUEBA CORRECTAMENTE
+  const calcularDiasRestantesPrueba = useCallback(() => {
+    if (!usuarioActual?.metadata?.creationTime) return 15;
+    const fechaCreacion = new Date(usuarioActual.metadata.creationTime);
+    const hoy = new Date();
+    const diasTranscurridos = Math.floor((hoy - fechaCreacion) / (1000 * 60 * 60 * 24));
+    return Math.max(0, 15 - diasTranscurridos); // ✅ Día 1 = 1, no 0
+  }, [usuarioActual]);
   
   // ✅ HOOK DE ELIMINACIÓN ATÓMICA
   const { handleDelete } = useDeleteTransaction(usuarioActual, puedeAccederAFuncion, formatearValor);
-const { cargarAInventario } = useCargarProduccion(usuarioActual);
+  const { cargarAInventario } = useCargarProduccion(usuarioActual);
 
   // ============================================================
 // VERIFICAR PAGO PENDIENTE - SOLO LECTURA DE URL (SIN TOKEN)
@@ -1185,12 +1209,7 @@ useEffect(() => {
     return limites[plan] || limites.gratis;
   }, [usuarioActual]);
 
-  const puedeAccederAFuncion = useCallback((funcion) => {
-    const limites = obtenerLimitesPlan();
-    return limites[funcion] === true;
-  }, [obtenerLimitesPlan]);
-
-  const obtenerLimiteEscaneos = useCallback(() => {
+    const obtenerLimiteEscaneos = useCallback(() => {
     const limites = obtenerLimitesPlan();
     return limites.escaneosMensuales;
   }, [obtenerLimitesPlan]);
@@ -4066,10 +4085,7 @@ const datosGrafico = [
               </div>
             </div>
 
-            {/* SECCIÓN CONFIGURACIÓN DE AUDITORÍA */}
-            <ConfiguracionAuditoria usuarioActual={usuarioActual} idioma={idioma} />
-
-            {/* PANEL DE ADMINISTRACIÓN */}
+                        {/* PANEL DE ADMINISTRACIÓN */}
             {/* <AdminPanel usuarioActual={usuarioActual} /> */}
 
             {/* PANEL DEL SARGENTO FINANCIERO */}
@@ -4279,9 +4295,23 @@ const datosGrafico = [
               </section>
             )}
 
-            {/* GRÁFICOS */}
+            {/* CONTENEDOR PRINCIPAL QUE DIVIDE LA PANTALLA EN 2 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
+              
+              {/* LADO IZQUIERDO: CONFIGURACIÓN DE AUDITORÍA */}
+              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <span>🛠️</span> Configuración de Auditoría
+                </h3>
+                <ConfiguracionAuditoria 
+                  usuarioActual={usuarioActual} 
+                  idioma={t} 
+                  onClose={() => {}}
+                />
+              </div>
+
+              {/* LADO DERECHO: BLOQUE DE GRÁFICOS */}
+              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <span>📊</span> {t.ingresosVsEgresos}
                 </h3>
@@ -4312,6 +4342,8 @@ const datosGrafico = [
                     No hay datos suficientes para mostrar el gráfico
                   </div>
                 )}
+                
+                {/* Leyenda de colores */}
                 <div className="mt-3 flex justify-center gap-4 text-xs flex-wrap">
                   <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-500"></div><span>Ventas</span></div>
                   <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>Gastos</span></div>
@@ -4322,51 +4354,76 @@ const datosGrafico = [
               </div>
             </div>
 
-            {/* Módulo de Producción y Dictamen */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <ProduccionForm 
-  usuarioActual={usuarioActual} 
-  idioma={idioma} 
-  setInventario={setInventario}
-  setMovimientos={setMovimientos}
-  onSuccess={() => {
-    setValidationMessage('✅ Producción auditada y cargada al inventario');
-    setTimeout(() => setValidationMessage(null), 3000);
-  }}
-  onError={(error) => {
-    setError(error.message);
-    setTimeout(() => setError(null), 5000);
-  }}
-/>
+                        {/* ============================================================
+                ACORDEONES PARA MÓVIL (PRODUCCIÓN Y REGISTRO MANUAL)
+            ============================================================ */}
 
-              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6">
-                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">📋 {t.dictamen}</h2>
-                <div className="bg-[#0f172a] rounded-xl p-4 h-64 overflow-y-auto whitespace-pre-wrap font-mono text-sm text-gray-300">
-                  {dictamenGeneral || 'Esperando datos para generar análisis...'}
+            {/* ACORDEÓN: AUDITORÍA DE PRODUCCIÓN */}
+            <div className="mb-4">
+              <button 
+                onClick={() => setShowProduccion(!showProduccion)}
+                className="w-full bg-[#1e293b] text-white p-4 rounded-xl flex justify-between items-center border border-blue-900/30 hover:bg-[#2a3a4a] transition-all"
+              >
+                <span className="font-bold">🏭 {t.produccion || 'Auditoría de Producción'}</span>
+                <span>{showProduccion ? '▲' : '▼'}</span>
+              </button>
+              {showProduccion && (
+                <div className="mt-2 p-4 bg-[#0f172a] rounded-xl border border-slate-800">
+                  <ProduccionForm 
+                    usuarioActual={usuarioActual} 
+                    idioma={idioma} 
+                    setInventario={setInventario}
+                    setMovimientos={setMovimientos}
+                    onSuccess={() => {
+                      setValidationMessage('✅ Producción auditada y cargada al inventario');
+                      setTimeout(() => setValidationMessage(null), 3000);
+                    }}
+                    onError={(error) => {
+                      setError(error.message);
+                      setTimeout(() => setError(null), 5000);
+                    }}
+                  />
                 </div>
+              )}
+            </div>
+
+            {/* DICTAMEN DE AUDITORÍA (SIEMPRE VISIBLE) */}
+            <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 mb-4">
+              <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">📋 {t.dictamen}</h2>
+              <div className="bg-[#0f172a] rounded-xl p-4 h-64 overflow-y-auto whitespace-pre-wrap font-mono text-sm text-gray-300">
+                {dictamenGeneral || 'Esperando datos para generar análisis...'}
               </div>
             </div>
 
-            {/* ============================================================
-                REGISTRO MANUAL Y CARGA MASIVA
-            ============================================================ */}
+            {/* ACORDEÓN: REGISTRO MANUAL DE MOVIMIENTOS */}
+            <div className="mb-4">
+              <button 
+                onClick={() => setShowRegistroManual(!showRegistroManual)}
+                className="w-full bg-[#1e293b] text-white p-4 rounded-xl flex justify-between items-center border border-blue-900/30 hover:bg-[#2a3a4a] transition-all"
+              >
+                <span className="font-bold">✍️ {t.registroManual || 'Registro Manual de Movimientos'}</span>
+                <span>{showRegistroManual ? '▲' : '▼'}</span>
+              </button>
+              {showRegistroManual && (
+                <div className="mt-2 p-4 bg-[#0f172a] rounded-xl border border-slate-800">
+                  <RegistroManual
+                    usuarioActual={usuarioActual}
+                    idioma={idioma}
+                    saldoActual={saldoCaja}
+                    guardarProductoEnCatalogo={guardarProductoEnCatalogo}
+                    onSuccess={() => {
+                      setValidationMessage(idioma === 'es' ? '✅ Movimiento registrado' : '✅ Transaction recorded');
+                      setTimeout(() => setValidationMessage(null), 3000);
+                    }}
+                    onError={(error) => {
+                      setError(error.message);
+                      setTimeout(() => setError(null), 5000);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
             
-            {/* Registro Manual - Para TODOS los planes */}
-            <RegistroManual
-              usuarioActual={usuarioActual}
-              idioma={idioma}
-              saldoActual={saldoCaja}
-              guardarProductoEnCatalogo={guardarProductoEnCatalogo}
-              onSuccess={() => {
-                setValidationMessage(idioma === 'es' ? '✅ Movimiento registrado' : '✅ Transaction recorded');
-                setTimeout(() => setValidationMessage(null), 3000);
-              }}
-              onError={(error) => {
-                setError(error.message);
-                setTimeout(() => setError(null), 5000);
-              }}
-            />
-
             {/* Carga Masiva - Solo para Business y Elite */}
             {(usuarioActual?.plan === 'business' || usuarioActual?.plan === 'elite') && (
               <MassiveUpload
@@ -4511,20 +4568,7 @@ const datosGrafico = [
         />
       )}
       */}
-
-            {/* Modal Configuración Auditoría */}
-      {mostrarConfigModal && (
-        <div className="fixed inset-0 bg-black/80 z-[1000] flex items-center justify-center p-4" onClick={() => setMostrarConfigModal(false)}>
-          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-            <ConfiguracionAuditoria 
-              usuarioActual={usuarioActual} 
-              idioma={idioma} 
-              onClose={() => setMostrarConfigModal(false)}
-            />
-          </div>
-        </div>
-      )}
-
+            
       {/* Modal Upgrade de Planes */}
       <ModalUpgrade
         isOpen={modalUpgradeOpen}
