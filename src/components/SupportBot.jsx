@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getFirestore, collection, query, where, orderBy, limit, getCountFromServer, getDocs, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useSoporteIA } from '../hooks/useSoporteIA';
 import ModalCreditosSoporte from './ModalCreditosSoporte';
 
-const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
+const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, diagnosticoBienvenida }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -88,18 +88,80 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
     if (!texto) return '';
     return texto
       .replace(/<[^>]*>/g, '')
-      .replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-      });
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  };
+
+  const formatearMoneda = (valor) => {
+    return new Intl.NumberFormat(idioma === 'es' ? 'es-CO' : 'en-US', {
+      style: 'currency',
+      currency: idioma === 'es' ? 'COP' : 'USD',
+      minimumFractionDigits: 0
+    }).format(valor);
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA CALCULAR PRECIO SUGERIDO DE LIQUIDACIÓN
+  // 🆕 DIAGNÓSTICO DE BIENVENIDA (NUEVA FUNCIONALIDAD)
   // ============================================================
-  const calcularPrecioLiquidacion = (costoUnitario, diasEnStock, moneda = 'COP') => {
+  useEffect(() => {
+    if (isOpen && messages.length === 0 && diagnosticoBienvenida) {
+      const { capitalInvertido, margenPromedio, tiempoRecuperacion, productoMasRentable, totalInventarioCosto, totalProductos } = diagnosticoBienvenida;
+      
+      let mensajeBienvenida = '';
+      if (idioma === 'es') {
+        mensajeBienvenida = `🎉 **¡Bienvenido a STRATIUM AI!**\n\n`;
+        mensajeBienvenida += `He analizado la configuración de tu negocio:\n\n`;
+        mensajeBienvenida += `📦 **Inventario:** ${totalProductos} productos con un costo total de ${formatearMoneda(totalInventarioCosto)}\n`;
+        mensajeBienvenida += `💰 **Capital invertido:** ${formatearMoneda(capitalInvertido)}\n`;
+        mensajeBienvenida += `📊 **Margen promedio:** ${margenPromedio}%\n`;
+        
+        if (productoMasRentable) {
+          mensajeBienvenida += `⭐ **Producto más rentable:** ${productoMasRentable.nombre} (${productoMasRentable.margen.toFixed(1)}% margen)\n`;
+        }
+        
+        if (tiempoRecuperacion) {
+          mensajeBienvenida += `\n🎯 **Punto de equilibrio:** Necesitas aproximadamente **${tiempoRecuperacion} ventas** para recuperar tu capital invertido.\n`;
+        }
+        
+        mensajeBienvenida += `\n✅ **¿Qué sigue?**\n`;
+        mensajeBienvenida += `• 📤 Sube tu inventario con carga masiva CSV\n`;
+        mensajeBienvenida += `• 📷 Escanea facturas de compras\n`;
+        mensajeBienvenida += `• 💬 Pregúntame "¿Cómo estoy?" para análisis detallado`;
+      } else {
+        mensajeBienvenida = `🎉 **Welcome to STRATIUM AI!**\n\n`;
+        mensajeBienvenida += `I have analyzed your business setup:\n\n`;
+        mensajeBienvenida += `📦 **Inventory:** ${totalProductos} products with a total cost of ${formatearMoneda(totalInventarioCosto)}\n`;
+        mensajeBienvenida += `💰 **Invested capital:** ${formatearMoneda(capitalInvertido)}\n`;
+        mensajeBienvenida += `📊 **Average margin:** ${margenPromedio}%\n`;
+        
+        if (productoMasRentable) {
+          mensajeBienvenida += `⭐ **Most profitable product:** ${productoMasRentable.nombre} (${productoMasRentable.margen.toFixed(1)}% margin)\n`;
+        }
+        
+        if (tiempoRecuperacion) {
+          mensajeBienvenida += `\n🎯 **Break-even point:** You need approximately **${tiempoRecuperacion} sales** to recover your invested capital.\n`;
+        }
+        
+        mensajeBienvenida += `\n✅ **What's next?**\n`;
+        mensajeBienvenida += `• 📤 Upload your inventory with CSV bulk upload\n`;
+        mensajeBienvenida += `• 📷 Scan purchase invoices\n`;
+        mensajeBienvenida += `• 💬 Ask me "How am I?" for detailed analysis`;
+      }
+      
+      setMessages([{ 
+        texto: mensajeBienvenida, 
+        esUsuario: false, 
+        fecha: null, 
+        fechaLocal: obtenerFechaLocal() 
+      }]);
+    }
+  }, [isOpen, diagnosticoBienvenida, idioma]);
+
+    // ============================================================
+  // FUNCIÓN PARA CALCULAR PRECIO SUGERIDO DE LIQUIDACIÓN (MEMOIZADA)
+  // ============================================================
+  const calcularPrecioLiquidacion = useCallback((costoUnitario, diasEnStock, moneda = 'COP') => {
     if (!costoUnitario || costoUnitario <= 0) return null;
     
     let precio = null;
@@ -132,10 +194,10 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
       urgencia,
       moneda
     };
-  };
+  }, []);
 
-  // ============================================================
-  // 🆕 FUNCIÓN PARA OBTENER DIAGNÓSTICO DE PRODUCTO DESDE FIRESTORE
+    // ============================================================
+  // FUNCIÓN PARA OBTENER DIAGNÓSTICO DE PRODUCTO DESDE FIRESTORE (CON VALIDACIÓN)
   // ============================================================
   const obtenerDiagnosticoProducto = async (nombreProducto) => {
     if (!usuarioActual?.uid || !nombreProducto) return null;
@@ -154,7 +216,10 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
       
       const producto = snapshot.docs[0].data();
       const clasificacion = producto.clasificacion || 'NEUTRO';
-      const diasEnStock = producto.diasEnStock || 0;
+      // ✅ VALIDACIÓN: Asegurar que diasEnStock sea un número válido
+      const diasEnStock = typeof producto.diasEnStock === 'number' && !isNaN(producto.diasEnStock) 
+        ? producto.diasEnStock 
+        : 0;
       const margenNeto = producto.margenNetoReal || 0;
       const costoUnitario = producto.costoUnitario || 0;
       const monedaProducto = producto.moneda || 'COP';
@@ -212,7 +277,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA LISTAR PRODUCTOS CRÍTICOS (HUESOS)
+  // FUNCIÓN PARA LISTAR PRODUCTOS CRÍTICOS (HUESOS)
   // ============================================================
   const listarProductosCriticos = async () => {
     if (!usuarioActual?.uid) return [];
@@ -245,10 +310,74 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA PROCESAR PREGUNTAS DEL USUARIO LOCALMENTE
+  // FUNCIÓN PARA ANALIZAR SALUD FINANCIERA CON RESUMEN
+  // ============================================================
+  const analizarSaludFinancieraConResumen = () => {
+    if (!resumenFinanciero) {
+      return {
+        alertas: [],
+        mensajeCompleto: idioma === 'es' 
+          ? 'No hay datos financieros disponibles para analizar.'
+          : 'No financial data available to analyze.'
+      };
+    }
+
+    const { ventas = 0, gastos = 0, pauta = 0, devoluciones = 0, cuentasPorCobrar = 0 } = resumenFinanciero;
+    const utilidad = ventas - gastos;
+    const margenNeto = ventas > 0 ? (utilidad / ventas) * 100 : 0;
+    const alertas = [];
+
+    if (pauta > ventas * 0.2 && ventas > 0) {
+      alertas.push({
+        tipo: 'GASTO_PUBLICIDAD_EXCESIVO',
+        gravedad: 'ALTA',
+        mensaje: `⚠️ **Gasto excesivo en publicidad:** Estás invirtiendo ${(pauta / ventas * 100).toFixed(1)}% de tus ventas en publicidad (límite recomendado: 20%).`,
+        recomendacion: 'Revisa tus campañas y reduce inversión en canales no rentables.'
+      });
+    }
+    
+    if (devoluciones > ventas * 0.1 && ventas > 0) {
+      alertas.push({
+        tipo: 'DEVOLUCIONES_EXCESIVAS',
+        gravedad: 'MEDIA',
+        mensaje: `⚠️ **Problemas logísticos:** Las devoluciones representan ${(devoluciones / ventas * 100).toFixed(1)}% de tus ventas (límite recomendado: 10%).`,
+        recomendacion: 'Revisa la calidad de productos, empaques y tiempos de entrega.'
+      });
+    }
+    
+    if (cuentasPorCobrar > ventas * 0.5 && ventas > 0) {
+      alertas.push({
+        tipo: 'CUENTAS_POR_COBRAR_EXCESIVAS',
+        gravedad: 'ALTA',
+        mensaje: `⚠️ **Falta de flujo de caja:** Tienes ${(cuentasPorCobrar / ventas * 100).toFixed(1)}% de tus ventas en cuentas por cobrar (límite recomendado: 50%).`,
+        recomendacion: 'Implementa políticas de pago más estrictas o descuentos por pronto pago.'
+      });
+    }
+
+    let mensajeCompleto = '';
+    if (alertas.length === 0) {
+      mensajeCompleto = `✅ **Tu salud financiera es buena.**\n\n📈 Ventas: ${formatearMoneda(ventas)}\n📉 Gastos: ${formatearMoneda(gastos)}\n💰 Utilidad: ${formatearMoneda(utilidad)}\n📊 Margen neto: ${margenNeto.toFixed(1)}%`;
+    } else {
+      mensajeCompleto = `📊 **Análisis de salud financiera**\n\n📈 Ventas: ${formatearMoneda(ventas)}\n📉 Gastos: ${formatearMoneda(gastos)}\n💰 Utilidad: ${formatearMoneda(utilidad)}\n📊 Margen neto: ${margenNeto.toFixed(1)}%\n\n⚠️ **Alertas encontradas:**\n${alertas.map(a => a.mensaje).join('\n')}`;
+    }
+
+    return { alertas, mensajeCompleto };
+  };
+
+  // ============================================================
+  // FUNCIÓN PARA PROCESAR PREGUNTAS DEL USUARIO LOCALMENTE
   // ============================================================
   const procesarPreguntaLocal = async (pregunta) => {
     const preguntaLower = pregunta.toLowerCase();
+    
+    // ✅ PREGUNTA DE SALUD FINANCIERA
+    if (preguntaLower.includes('salud financiera') || 
+        preguntaLower.includes('cómo estoy') ||
+        preguntaLower.includes('resumen financiero') ||
+        preguntaLower.includes('cómo va mi negocio') ||
+        preguntaLower.includes('qué tal estoy')) {
+      return analizarSaludFinancieraConResumen().mensajeCompleto;
+    }
     
     const productoMatch = preguntaLower.match(/(?:qué|como|dime|analiza|diagnostica)\s+(?:es|está|sobre)\s+(?:el producto\s+)?([a-záéíóúñ\s]+)/i);
     if (productoMatch) {
@@ -311,51 +440,11 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
       return respuesta;
     }
     
-    if (preguntaLower.includes('salud financiera') || 
-        preguntaLower.includes('cómo estoy') ||
-        preguntaLower.includes('resumen')) {
-      const criticos = await listarProductosCriticos();
-      let resumen = `📊 **Resumen de tu negocio:**\n\n`;
-      
-      if (criticos.length > 0) {
-        resumen += `⚠️ Tienes **${criticos.length} productos HUESO** que están atrapando tu capital.\n`;
-        let valorAtrapado = 0;
-        criticos.forEach(p => {
-          valorAtrapado += p.cantidad * p.costoUnitario;
-        });
-        resumen += `💰 Capital atrapado: ${valorAtrapado.toLocaleString()} COP\n`;
-        resumen += `💡 Revisa la lista de productos críticos para ver precios sugeridos.\n`;
-      } else {
-        resumen += `✅ No tienes productos HUESO. Tu inventario tiene buena rotación.\n`;
-        resumen += `📈 Sigue monitoreando tus márgenes de rentabilidad.\n`;
-      }
-      return resumen;
-    }
-    
     return null;
   };
 
-  const enviarMensaje = async () => {
+    const enviarMensaje = async () => {
     if (!input.trim()) return;
-    
-    // ✅ VERIFICAR CRÉDITOS DE SOPORTE IA
-    const verificacion = await verificarCredito();
-    
-    if (!verificacion.valido) {
-      const mensajeBloqueo = getMensajeBloqueo(idioma);
-      const mensaje = idioma === 'es'
-        ? `⚠️ Has agotado tus consultas de soporte IA de este mes. Te quedan ${creditosDisponibles} consultas disponibles.`
-        : `⚠️ You have exhausted your AI support consultations for this month. You have ${creditosDisponibles} consultations left.`;
-      
-      setMessages(prev => [...prev, { 
-        texto: mensaje, 
-        esUsuario: false, 
-        fecha: null,
-        fechaLocal: obtenerFechaLocal()
-      }]);
-      setMostrarModalCreditos(true);
-      return;
-    }
     
     const fechaLocal = obtenerFechaLocal();
     const userMessage = { 
@@ -370,12 +459,32 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
     setLoading(true);
 
     try {
+      // ✅ PRIMERO: Intentar responder localmente (SIEMPRE GRATIS)
       const respuestaLocal = await procesarPreguntaLocal(preguntaUsuario);
       
       let respuestaIA;
       if (respuestaLocal) {
         respuestaIA = respuestaLocal;
       } else {
+        // ✅ SOLO SI NO HAY RESPUESTA LOCAL: Verificar y consumir créditos para IA
+        const verificacion = await verificarCredito();
+        
+        if (!verificacion.valido) {
+          const mensaje = idioma === 'es'
+            ? `⚠️ Has agotado tus consultas de soporte IA de este mes. Te quedan ${creditosDisponibles} consultas disponibles.`
+            : `⚠️ You have exhausted your AI support consultations for this month. You have ${creditosDisponibles} consultations left.`;
+          
+          setMessages(prev => [...prev, { 
+            texto: mensaje, 
+            esUsuario: false, 
+            fecha: null,
+            fechaLocal: obtenerFechaLocal()
+          }]);
+          setMostrarModalCreditos(true);
+          setLoading(false);
+          return;
+        }
+        
         const soporteIA = httpsCallable(functions, 'soporteIA');
         const result = await soporteIA({ 
           pregunta: preguntaUsuario, 
@@ -385,6 +494,9 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
           fechaLocal: fechaLocal
         });
         respuestaIA = result.data.respuesta;
+        
+        // ✅ CONSUMIR CRÉDITO SOLO DESPUÉS DE UNA LLAMADA EXITOSA A IA
+        await consumirCredito();
       }
 
       const botMessage = { 
@@ -394,9 +506,6 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
         fechaLocal: obtenerFechaLocal()
       };
       setMessages(prev => [...prev, botMessage]);
-      
-      // ✅ CONSUMIR CRÉDITO DESPUÉS DE LA RESPUESTA
-      await consumirCredito();
       
     } catch (error) {
       console.error('Error en soporte:', error);
@@ -430,7 +539,6 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Actualizar créditos cuando cambia el modal de créditos
   const handleCompraExitosa = () => {
     setMostrarModalCreditos(false);
     window.location.reload();
@@ -455,7 +563,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && (
+            {messages.length === 0 && !diagnosticoBienvenida && (
               <div className="text-center text-gray-500 mt-8">
                 <p>🤖 {idioma === 'es' ? 'Hola, soy tu asistente IA de STRATIUM AI' : 'Hello, I am your AI assistant from STRATIUM AI'}</p>
                 <p className="text-sm mt-2">{idioma === 'es' ? 'Pregúntame sobre finanzas, costos o cómo usar la plataforma' : 'Ask me about finances, costs, or how to use the platform'}</p>
@@ -471,7 +579,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
                 <p className="text-xs text-gray-400">• {idioma === 'es' ? '¿Cómo está mi producto Camisa?' : 'How is my product Shirt?'}</p>
                 <p className="text-xs text-gray-400">• {idioma === 'es' ? '¿Qué productos son críticos?' : 'Which products are critical?'}</p>
                 <p className="text-xs text-gray-400">• {idioma === 'es' ? '¿Cuáles son mis productos estrella?' : 'What are my star products?'}</p>
-                <p className="text-xs text-gray-400">• {idioma === 'es' ? 'Resumen de salud financiera' : 'Financial health summary'}</p>
+                <p className="text-xs text-gray-400" style={{ color: '#22d3ee' }}>• {idioma === 'es' ? '¿Cómo estoy financieramente?' : 'How am I financially?'}</p>
               </div>
             )}
             {messages.map((msg, idx) => (
@@ -534,7 +642,6 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda }) => {
         </div>
       )}
 
-      {/* Modal de compra de créditos */}
       <ModalCreditosSoporte
         isOpen={mostrarModalCreditos}
         onClose={() => setMostrarModalCreditos(false)}

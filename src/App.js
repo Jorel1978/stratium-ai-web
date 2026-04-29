@@ -36,6 +36,7 @@ import ModalUpgrade from './components/ModalUpgrade';
 import SupportBot from './components/SupportBot';
 import useDeleteTransaction from './hooks/useDeleteTransaction';
 import useCargarProduccion from './hooks/useCargarProduccion';
+import OnboardingNegocioExistente from './components/OnboardingNegocioExistente';
 //import CheckoutStripe from './components/CheckoutStripe'; // Oculto Temporalmente
 
 const firebaseConfig = {
@@ -975,6 +976,9 @@ const App = () => {
   const [inventario, setInventario] = useState([]);
   const [cuentasPorPagar, setCuentasPorPagar] = useState([]);
   
+  // ✅ NUEVO: Estado para cuentas por cobrar (lo que te deben)
+  const [cuentasPorCobrar, setCuentasPorCobrar] = useState([]);
+  
   // Estado para carga y error
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1084,6 +1088,12 @@ const App = () => {
   const [showProduccion, setShowProduccion] = useState(false);
   const [showRegistroManual, setShowRegistroManual] = useState(false);
   
+  // ✅ NUEVO ESTADO PARA ONBOARDING
+  const [mostrarOnboarding, setMostrarOnboarding] = useState(false);
+  
+  // ✅ NUEVO ESTADO PARA DIAGNÓSTICO DE BIENVENIDA
+  const [diagnosticoBienvenida, setDiagnosticoBienvenida] = useState(null);
+
   // ✅ FUNCIÓN PARA VERIFICAR ACCESO POR PLAN (DEFINIDA DENTRO DE App)
   const puedeAccederAFuncion = (funcion) => {
     try {
@@ -1100,8 +1110,55 @@ const App = () => {
     const fechaCreacion = new Date(usuarioActual.metadata.creationTime);
     const hoy = new Date();
     const diasTranscurridos = Math.floor((hoy - fechaCreacion) / (1000 * 60 * 60 * 24));
-    return Math.max(0, 15 - diasTranscurridos); // ✅ Día 1 = 1, no 0
+    return Math.max(0, 15 - diasTranscurridos);
   }, [usuarioActual]);
+  
+  // ============================================================
+  // FUNCIÓN PARA GENERAR DIAGNÓSTICO DE CIERRE (EFECTO WOW)
+  // ============================================================
+  const generarDiagnosticoCierre = (inventario, movimientos, capitalInyectado) => {
+    const totalInventarioCosto = inventario.reduce((sum, p) => sum + ((p.costoUnitario || 0) * (p.cantidad || 0)), 0);
+    
+    const productoMasRentable = [...inventario]
+      .filter(p => p.margenNetoReal > 0)
+      .sort((a, b) => b.margenNetoReal - a.margenNetoReal)[0];
+  
+    let margenPromedio = 0;
+    const productosConMargen = inventario.filter(p => p.margenNetoReal > 0);
+    if (productosConMargen.length > 0) {
+      margenPromedio = productosConMargen.reduce((sum, p) => sum + (p.margenNetoReal || 0), 0) / productosConMargen.length;
+    }
+    
+    let tiempoRecuperacion = null;
+    const ventaPromedio = inventario.length > 0 ? totalInventarioCosto / inventario.length : 0;
+    const gananciaPorVenta = ventaPromedio * (margenPromedio / 100);
+    
+    if (gananciaPorVenta > 0 && capitalInyectado > 0) {
+      tiempoRecuperacion = Math.ceil(capitalInyectado / gananciaPorVenta);
+    }
+  
+    return {
+      capitalInvertido: capitalInyectado,
+      totalInventarioCosto: totalInventarioCosto,
+      totalProductos: inventario.length,
+      margenPromedio: margenPromedio.toFixed(1),
+      productoMasRentable: productoMasRentable ? { 
+        nombre: productoMasRentable.producto, 
+        margen: productoMasRentable.margenNetoReal 
+      } : null,
+      tiempoRecuperacion: tiempoRecuperacion
+    };
+  };
+  
+  // ✅ GENERAR DIAGNÓSTICO DE CIERRE CUANDO HAY DATOS
+  useEffect(() => {
+    if (inventario.length > 0 && usuarioActual) {
+      const capitalInyectado = usuarioActual?.aportesPersonales || 0;
+      const diagnostico = generarDiagnosticoCierre(inventario, movimientos, capitalInyectado);
+      setDiagnosticoBienvenida(diagnostico);
+      console.log('📊 Diagnóstico de cierre generado:', diagnostico);
+    }
+  }, [inventario, movimientos, usuarioActual]);
   
   // ✅ HOOK DE ELIMINACIÓN ATÓMICA
   const { handleDelete } = useDeleteTransaction(usuarioActual, puedeAccederAFuncion, formatearValor);
@@ -3372,107 +3429,120 @@ const datosGrafico = [
   { nombre: 'Utilidad', valor: utilidadEstimada, color: utilidadEstimada >= 0 ? '#06b6d4' : '#f97316' }
 ];
 
-  // ============================================================
-  // COMPARACIÓN MES A MES
-  // ============================================================
-  const calcularVariacionMensual = useCallback(() => {
-    if (!puedeAccederAFuncion('puedeVerComparacionMensual')) {
-      return {
-        ventas: { actual: 0, anterior: 0, variacion: 0 },
-        gastos: { actual: 0, anterior: 0, variacion: 0 },
-        utilidad: { actual: 0, anterior: 0, variacion: 0 }
-      };
-    }
-    
-    const hoy = new Date();
-    const primerDiaMesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const primerDiaMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
-    const ultimoDiaMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
-    const fechaLimite = obtenerFechaLimiteHistorial();
-    
-    const mesActual = movimientos.filter(m => {
-      if (!m.fecha || m.userId !== usuarioActual?.uid) return false;
-      const fechaMov = new Date(m.fecha);
-      return fechaMov >= primerDiaMesActual && fechaMov <= hoy && fechaMov >= fechaLimite;
-    });
-    
-    const mesAnterior = movimientos.filter(m => {
-      if (!m.fecha || m.userId !== usuarioActual?.uid) return false;
-      const fechaMov = new Date(m.fecha);
-      return fechaMov >= primerDiaMesAnterior && fechaMov <= ultimoDiaMesAnterior && fechaMov >= fechaLimite;
-    });
-    
-    const ventasActual = mesActual.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
-    const gastosActual = mesActual.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
-    const utilidadActual = ventasActual - gastosActual;
-    
-    const ventasAnterior = mesAnterior.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
-    const gastosAnterior = mesAnterior.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
-    const utilidadAnterior = ventasAnterior - gastosAnterior;
-    
-    const variacionVentas = ventasAnterior > 0 ? ((ventasActual - ventasAnterior) / ventasAnterior) * 100 : 0;
-    const variacionGastos = gastosAnterior > 0 ? ((gastosActual - gastosAnterior) / gastosAnterior) * 100 : 0;
-    const variacionUtilidad = utilidadAnterior > 0 ? ((utilidadActual - utilidadAnterior) / utilidadAnterior) * 100 : 0;
-    
+// ✅ RESUMEN FINANCIERO PARA EL SUPPORTBOT (ANÁLISIS DE SALUD)
+// ✅ CORREGIDO: cuentasPorPagar → cuentasPorCobrar
+const resumenFinanciero = {
+  ventas: ventasTotales,
+  gastos: gastosTotales,
+  pauta: gastosTotales * 0.15,
+  devoluciones: 0,
+  cuentasPorCobrar: cuentasPorCobrar?.reduce((sum, c) => sum + (c.valor || 0), 0) || 0,
+  movimientos: movimientos,
+  inventario: inventario,
+  capitalInyectado: capitalInyectado
+};
+
+// ============================================================
+// COMPARACIÓN MES A MES
+// ============================================================
+const calcularVariacionMensual = useCallback(() => {
+  if (!puedeAccederAFuncion('puedeVerComparacionMensual')) {
     return {
-      ventas: { actual: ventasActual, anterior: ventasAnterior, variacion: variacionVentas },
-      gastos: { actual: gastosActual, anterior: gastosAnterior, variacion: variacionGastos },
-      utilidad: { actual: utilidadActual, anterior: utilidadAnterior, variacion: variacionUtilidad }
+      ventas: { actual: 0, anterior: 0, variacion: 0 },
+      gastos: { actual: 0, anterior: 0, variacion: 0 },
+      utilidad: { actual: 0, anterior: 0, variacion: 0 }
     };
-  }, [movimientos, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
+  }
+  
+  const hoy = new Date();
+  const primerDiaMesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const primerDiaMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const ultimoDiaMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+  const fechaLimite = obtenerFechaLimiteHistorial();
+  
+  const mesActual = movimientos.filter(m => {
+    if (!m.fecha || m.userId !== usuarioActual?.uid) return false;
+    const fechaMov = new Date(m.fecha);
+    return fechaMov >= primerDiaMesActual && fechaMov <= hoy && fechaMov >= fechaLimite;
+  });
+  
+  const mesAnterior = movimientos.filter(m => {
+    if (!m.fecha || m.userId !== usuarioActual?.uid) return false;
+    const fechaMov = new Date(m.fecha);
+    return fechaMov >= primerDiaMesAnterior && fechaMov <= ultimoDiaMesAnterior && fechaMov >= fechaLimite;
+  });
+  
+  const ventasActual = mesActual.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
+  const gastosActual = mesActual.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
+  const utilidadActual = ventasActual - gastosActual;
+  
+  const ventasAnterior = mesAnterior.filter(m => m.tipo === 'ingreso').reduce((sum, m) => sum + m.valor, 0);
+  const gastosAnterior = mesAnterior.filter(m => m.tipo === 'egreso').reduce((sum, m) => sum + m.valor, 0);
+  const utilidadAnterior = ventasAnterior - gastosAnterior;
+  
+  const variacionVentas = ventasAnterior > 0 ? ((ventasActual - ventasAnterior) / ventasAnterior) * 100 : 0;
+  const variacionGastos = gastosAnterior > 0 ? ((gastosActual - gastosAnterior) / gastosAnterior) * 100 : 0;
+  const variacionUtilidad = utilidadAnterior > 0 ? ((utilidadActual - utilidadAnterior) / utilidadAnterior) * 100 : 0;
+  
+  return {
+    ventas: { actual: ventasActual, anterior: ventasAnterior, variacion: variacionVentas },
+    gastos: { actual: gastosActual, anterior: gastosAnterior, variacion: variacionGastos },
+    utilidad: { actual: utilidadActual, anterior: utilidadAnterior, variacion: variacionUtilidad }
+  };
+}, [movimientos, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
 
-  const variaciones = calcularVariacionMensual();
+const variaciones = calcularVariacionMensual();
 
-  // ============================================================
-  // PUNTO DE EQUILIBRIO
-  // ============================================================
-  const calcularPuntoEquilibrio = useCallback(() => {
-    if (!usuarioActual?.uid) return { costosFijos: 0, margenBruto: 0, puntoEquilibrio: 0, ventasActuales: 0, estaDebajo: false };
-    if (!puedeAccederAFuncion('puedeVerPuntoEquilibrio')) {
-      return { costosFijos: 0, margenBruto: 0, puntoEquilibrio: 0, ventasActuales: 0, estaDebajo: false };
-    }
-    
-    const hoy = new Date();
-    const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const fechaLimite = obtenerFechaLimiteHistorial();
-    
-    const movimientosMes = movimientos.filter(m => {
-      if (!m.fecha || m.userId !== usuarioActual.uid) return false;
-      const fechaMov = new Date(m.fecha);
-      return fechaMov >= primerDiaMes && fechaMov <= hoy && fechaMov >= fechaLimite;
-    });
-    
-    const categoriasFijas = ['GASTO_FIJO', 'Nómina', 'Servicios', 'Arriendo'];
-    const costosFijos = movimientosMes
-      .filter(m => m.tipo === 'egreso' && (categoriasFijas.includes(m.categoria) || m.categoria === 'Gasto Fijo'))
-      .reduce((sum, m) => sum + m.valor, 0);
-    
-    const gastosTotalesMes = movimientosMes
-      .filter(m => m.tipo === 'egreso')
-      .reduce((sum, m) => sum + m.valor, 0);
-    const costosFijosReales = costosFijos > 0 ? costosFijos : gastosTotalesMes * 0.3;
-    
-    const ventasMes = movimientosMes
-      .filter(m => m.tipo === 'ingreso')
-      .reduce((sum, m) => sum + m.valor, 0);
-    const utilidadMes = ventasMes - gastosTotalesMes;
-    const margenBruto = ventasMes > 0 ? (utilidadMes / ventasMes) * 100 : 0;
-    
-    let puntoEquilibrio = 0;
-    if (margenBruto > 0) {
-      puntoEquilibrio = costosFijosReales / (margenBruto / 100);
-    }
-    
-    return {
-      costosFijos: costosFijosReales,
-      margenBruto: margenBruto,
-      puntoEquilibrio: puntoEquilibrio,
-      ventasActuales: ventasMes,
-      estaDebajo: ventasMes > 0 && puntoEquilibrio > 0 && ventasMes < puntoEquilibrio
-    };
-  }, [movimientos, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
+// ============================================================
+// PUNTO DE EQUILIBRIO
+// ============================================================
+const calcularPuntoEquilibrio = useCallback(() => {
+  if (!usuarioActual?.uid) return { costosFijos: 0, margenBruto: 0, puntoEquilibrio: 0, ventasActuales: 0, estaDebajo: false };
+  if (!puedeAccederAFuncion('puedeVerPuntoEquilibrio')) {
+    return { costosFijos: 0, margenBruto: 0, puntoEquilibrio: 0, ventasActuales: 0, estaDebajo: false };
+  }
+  
+  const hoy = new Date();
+  const primerDiaMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const fechaLimite = obtenerFechaLimiteHistorial();
+  
+  const movimientosMes = movimientos.filter(m => {
+    if (!m.fecha || m.userId !== usuarioActual.uid) return false;
+    const fechaMov = new Date(m.fecha);
+    return fechaMov >= primerDiaMes && fechaMov <= hoy && fechaMov >= fechaLimite;
+  });
+  
+  const categoriasFijas = ['GASTO_FIJO', 'Nómina', 'Servicios', 'Arriendo'];
+  const costosFijos = movimientosMes
+    .filter(m => m.tipo === 'egreso' && (categoriasFijas.includes(m.categoria) || m.categoria === 'Gasto Fijo'))
+    .reduce((sum, m) => sum + m.valor, 0);
+  
+  const gastosTotalesMes = movimientosMes
+    .filter(m => m.tipo === 'egreso')
+    .reduce((sum, m) => sum + m.valor, 0);
+  const costosFijosReales = costosFijos > 0 ? costosFijos : gastosTotalesMes * 0.3;
+  
+  const ventasMes = movimientosMes
+    .filter(m => m.tipo === 'ingreso')
+    .reduce((sum, m) => sum + m.valor, 0);
+  const utilidadMes = ventasMes - gastosTotalesMes;
+  const margenBruto = ventasMes > 0 ? (utilidadMes / ventasMes) * 100 : 0;
+  
+  let puntoEquilibrio = 0;
+  if (margenBruto > 0) {
+    puntoEquilibrio = costosFijosReales / (margenBruto / 100);
+  }
+  
+  return {
+    costosFijos: costosFijosReales,
+    margenBruto: margenBruto,
+    puntoEquilibrio: puntoEquilibrio,
+    ventasActuales: ventasMes,
+    estaDebajo: ventasMes > 0 && puntoEquilibrio > 0 && ventasMes < puntoEquilibrio
+  };
+}, [movimientos, usuarioActual, puedeAccederAFuncion, obtenerFechaLimiteHistorial]);
 
-  const puntoEquilibrio = calcularPuntoEquilibrio();
+const puntoEquilibrio = calcularPuntoEquilibrio();
 
   // ============================================================
   // ROTACIÓN DE INVENTARIO
@@ -3613,7 +3683,9 @@ const datosGrafico = [
   const [sobrecostosProveedores, setSobrecostosProveedores] = useState([]);
   const [ahorroPotencial, setAhorroPotencial] = useState(0);
 
-  // Efecto para detectar sobrecostos cuando cambian movimientos o plan
+   // ============================================================
+  // 🚀 NUEVO: AUDITORÍA DE SOBRECOSTOS DE PROVEEDORES (Business/Elite)
+  // ============================================================
   useEffect(() => {
     if (!usuarioActual?.uid) return;
     
@@ -3637,6 +3709,17 @@ const datosGrafico = [
       setTimeout(() => setValidationMessage(null), 8000);
     }
   }, [movimientos, inventario, usuarioActual?.plan, usuarioActual?.uid, idioma]);
+
+  // ============================================================
+  // ONBOARDING - Verificar si el usuario necesita completar onboarding
+  // ============================================================
+  useEffect(() => {
+  if (usuarioActual && usuarioActual.onboardingCompletado !== true) {
+    setMostrarOnboarding(true);
+  } else {
+    setMostrarOnboarding(false);
+  }
+}, [usuarioActual]);
 
   // ============================================================
   // MANEJAR GUARDADO CON VENCIMIENTO
@@ -3810,7 +3893,7 @@ const datosGrafico = [
   <span className="hidden sm:inline">Auditoría</span>
 </button>
 
-            {/* Botón exportar CSV */}
+                      {/* Botón exportar CSV */}
             <button
               onClick={exportarACSV}
               disabled={movimientos.length === 0}
@@ -3826,12 +3909,14 @@ const datosGrafico = [
               <span className="hidden sm:inline">Exportar CSV</span>
             </button>
             
+            {/* Botón Adjuntar documento */}
             <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 ${subiendoArchivo ? 'opacity-50 cursor-wait' : ''}`}>
               <span>📎</span>
               <span className="hidden sm:inline">{subiendoArchivo ? t.adjuntando : t.adjuntar}</span>
               <input type="file" className="hidden" onChange={handleFileUpload} accept=".pdf,.jpg,.jpeg,.png" disabled={subiendoArchivo} />
             </label>
             
+            {/* Botón Escanear factura */}
             <button
               onClick={seleccionarImagenFactura}
               disabled={procesandoOCR}
@@ -3841,6 +3926,7 @@ const datosGrafico = [
               <span className="hidden sm:inline">{procesandoOCR ? t.procesandoOCR : t.escanearFactura}</span>
             </button>
             
+            {/* Botón Logs de eliminaciones (solo Business/Elite) */}
             {puedeAccederAFuncion('puedeVerLogs') && (
               <button
                 onClick={() => setMostrarLogsEliminaciones(!mostrarLogsEliminaciones)}
@@ -3851,6 +3937,7 @@ const datosGrafico = [
               </button>
             )}
             
+            {/* Botón Cerrar Sesión */}
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 transition-all"
@@ -3859,6 +3946,7 @@ const datosGrafico = [
               <span className="hidden sm:inline">{t.logout}</span>
             </button>
             
+            {/* Estado de conexión */}
             <div className="text-sm text-gray-400">
               <span className="flex items-center">
                 <span className={`w-2 h-2 rounded-full mr-2 ${isLoading ? 'bg-yellow-500 animate-pulse' : 'bg-emerald-500'}`}></span>
@@ -3869,7 +3957,7 @@ const datosGrafico = [
         </div>
       </header>
 
-<Toaster position="top-center" reverseOrder={false} />
+      <Toaster position="top-center" reverseOrder={false} />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {usuarioActual?.suscripcionActiva === true || usuarioActual?.plan === 'gratis' || usuarioActual?.plan === 'starter' ? (
@@ -4624,12 +4712,14 @@ const datosGrafico = [
       )}
 
       {/* Bot de Soporte IA */}
-      <SupportBot
-        usuarioActual={usuarioActual}
-        idioma={idioma}
-        plan={usuarioActual?.plan}
-        moneda={moneda}
-      />
+   <SupportBot 
+  usuarioActual={usuarioActual}
+  idioma={idioma}
+  plan={usuarioActual?.plan}
+  moneda={moneda}
+  resumenFinanciero={resumenFinanciero}        // ✅ DEBE ESTAR
+  diagnosticoBienvenida={diagnosticoBienvenida} // ✅ DEBE ESTAR
+/>
     </div>
   );
 };
