@@ -1117,52 +1117,52 @@ const App = () => {
   // FUNCIÓN PARA GENERAR DIAGNÓSTICO DE CIERRE (EFECTO WOW)
   // ============================================================
   const generarDiagnosticoCierre = (inventario, movimientos, capitalInyectado) => {
-    const totalInventarioCosto = inventario.reduce((sum, p) => sum + ((p.costoUnitario || 0) * (p.cantidad || 0)), 0);
-    
-    const productoMasRentable = [...inventario]
-      .filter(p => p.margenNetoReal > 0)
-      .sort((a, b) => b.margenNetoReal - a.margenNetoReal)[0];
+  const totalInventarioCosto = inventario.reduce((sum, p) => sum + ((p.costoUnitario || 0) * (p.cantidad || 0)), 0);
   
-    let margenPromedio = 0;
-    const productosConMargen = inventario.filter(p => p.margenNetoReal > 0);
-    if (productosConMargen.length > 0) {
-      margenPromedio = productosConMargen.reduce((sum, p) => sum + (p.margenNetoReal || 0), 0) / productosConMargen.length;
-    }
-    
-    let tiempoRecuperacion = null;
-    const ventaPromedio = inventario.length > 0 ? totalInventarioCosto / inventario.length : 0;
-    const gananciaPorVenta = ventaPromedio * (margenPromedio / 100);
-    
-    if (gananciaPorVenta > 0 && capitalInyectado > 0) {
-      tiempoRecuperacion = Math.ceil(capitalInyectado / gananciaPorVenta);
-    }
+  const productoMasRentable = [...inventario]
+    .filter(p => p.margenNetoReal > 0)
+    .sort((a, b) => b.margenNetoReal - a.margenNetoReal)[0];
+
+  let margenPromedio = 0;
+  const productosConMargen = inventario.filter(p => p.margenNetoReal > 0);
+  if (productosConMargen.length > 0) {
+    margenPromedio = productosConMargen.reduce((sum, p) => sum + (p.margenNetoReal || 0), 0) / productosConMargen.length;
+  }
   
-    return {
-      capitalInvertido: capitalInyectado,
-      totalInventarioCosto: totalInventarioCosto,
-      totalProductos: inventario.length,
-      margenPromedio: margenPromedio.toFixed(1),
-      productoMasRentable: productoMasRentable ? { 
-        nombre: productoMasRentable.producto, 
-        margen: productoMasRentable.margenNetoReal 
-      } : null,
-      tiempoRecuperacion: tiempoRecuperacion
-    };
+  let tiempoRecuperacion = null;
+  const ventaPromedio = inventario.length > 0 ? totalInventarioCosto / inventario.length : 0;
+  const gananciaPorVenta = ventaPromedio * (margenPromedio / 100);
+  
+  if (gananciaPorVenta > 0 && capitalInyectado > 0) {
+    tiempoRecuperacion = Math.ceil(capitalInyectado / gananciaPorVenta);
+  }
+
+  return {
+    capitalInvertido: capitalInyectado,
+    totalInventarioCosto: totalInventarioCosto,
+    totalProductos: inventario.length,
+    margenPromedio: margenPromedio.toFixed(1),
+    productoMasRentable: productoMasRentable ? { 
+      nombre: productoMasRentable.producto, 
+      margen: productoMasRentable.margenNetoReal 
+    } : null,
+    tiempoRecuperacion: tiempoRecuperacion
   };
-  
-  // ✅ GENERAR DIAGNÓSTICO DE CIERRE CUANDO HAY DATOS
-  useEffect(() => {
-    if (inventario.length > 0 && usuarioActual) {
-      const capitalInyectado = usuarioActual?.aportesPersonales || 0;
-      const diagnostico = generarDiagnosticoCierre(inventario, movimientos, capitalInyectado);
-      setDiagnosticoBienvenida(diagnostico);
-      console.log('📊 Diagnóstico de cierre generado:', diagnostico);
-    }
-  }, [inventario, movimientos, usuarioActual]);
-  
-  // ✅ HOOK DE ELIMINACIÓN ATÓMICA
-  const { handleDelete } = useDeleteTransaction(usuarioActual, puedeAccederAFuncion, formatearValor);
-  const { cargarAInventario } = useCargarProduccion(usuarioActual);
+};
+
+// ✅ GENERAR DIAGNÓSTICO DE CIERRE CUANDO HAY DATOS (CORREGIDO)
+useEffect(() => {
+  if (inventario.length > 0 && usuarioActual) {
+    const capitalActual = usuarioActual?.aportesPersonales || 0;
+    const diagnostico = generarDiagnosticoCierre(inventario, movimientos, capitalActual);
+    setDiagnosticoBienvenida(diagnostico);
+    console.log('📊 Diagnóstico generado:', diagnostico);
+  }
+}, []); // ✅ ARRAY VACÍO
+
+// ✅ HOOK DE ELIMINACIÓN ATÓMICA
+const { handleDelete } = useDeleteTransaction(usuarioActual, puedeAccederAFuncion, formatearValor);
+const { cargarAInventario } = useCargarProduccion(usuarioActual);
 
   // ============================================================
 // VERIFICAR PAGO PENDIENTE - SOLO LECTURA DE URL (SIN TOKEN)
@@ -2850,6 +2850,9 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
   // ============================================================
   // CARGAR DATOS DESDE FIREBASE
   // ============================================================
+    // ============================================================
+  // CARGAR DATOS DESDE FIREBASE
+  // ============================================================
   useEffect(() => {
     if (!usuarioActual?.uid) {
       setMovimientos([]);
@@ -2896,9 +2899,9 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
           });
         });
         setMovimientos(registrosData);
-        setIsLoading(false);
-        setError(null);
-        generarDictamenGeneral(registrosData);
+setIsLoading(false);
+setError(null);
+generarDictamenGeneral(registrosData);  // ✅ VOLVER A PONER ESTO
       },
       (err) => {
         console.error('Error en onSnapshot:', err);
@@ -2930,8 +2933,8 @@ const guardarProductoEnCatalogo = async (nombreProducto, userId) => {
       unsubscribeInventario();
       unsubscribeCuentas();
     };
-  }, [usuarioActual, obtenerEmojiPorCategoria, generarDictamenGeneral, obtenerFechaLimiteHistorial]);
-
+  }, [usuarioActual, obtenerEmojiPorCategoria, obtenerFechaLimiteHistorial]); // ✅ SIN generarDictamenGeneral
+  
   // ============================================================
   // FUNCIONES DE AUTENTICACIÓN (CON PLAN 3 - 500 ESCANEOS)
   // ============================================================
@@ -3713,13 +3716,24 @@ const puntoEquilibrio = calcularPuntoEquilibrio();
   // ============================================================
   // ONBOARDING - Verificar si el usuario necesita completar onboarding
   // ============================================================
-  useEffect(() => {
-  if (usuarioActual && usuarioActual.onboardingCompletado !== true) {
-    setMostrarOnboarding(true);
-  } else {
-    setMostrarOnboarding(false);
-  }
-}, [usuarioActual]);
+  // ✅ CORREGIDO - Solo se ejecuta UNA VEZ cuando el componente se monta
+// useEffect(() => {
+//   let isMounted = true;
+//   
+//   const verificarOnboarding = () => {
+//     if (usuarioActual && usuarioActual.onboardingCompletado !== true && isMounted) {
+//       setMostrarOnboarding(true);
+//     } else if (isMounted) {
+//       setMostrarOnboarding(false);
+//     }
+//   };
+//   
+//   verificarOnboarding();
+//   
+//   return () => {
+//     isMounted = false;
+//   };
+// }, []); // ✅ ARRAY VACÍO
 
   // ============================================================
   // MANEJAR GUARDADO CON VENCIMIENTO
@@ -4383,97 +4397,97 @@ const puntoEquilibrio = calcularPuntoEquilibrio();
               </section>
             )}
 
-            {/* CONTENEDOR PRINCIPAL QUE DIVIDE LA PANTALLA EN 2 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              
-              {/* LADO IZQUIERDO: CONFIGURACIÓN DE AUDITORÍA */}
-              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <span>🛠️</span> Configuración de Auditoría
-                </h3>
-                <ConfiguracionAuditoria 
-                  usuarioActual={usuarioActual} 
-                  idioma={t} 
-                  onClose={() => {}}
+                  {/* CONTENEDOR PRINCIPAL QUE DIVIDE LA PANTALLA EN 2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        
+        {/* LADO IZQUIERDO: CONFIGURACIÓN DE AUDITORÍA */}
+        <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span>🛠️</span> Configuración de Auditoría
+          </h3>
+          <ConfiguracionAuditoria 
+            usuarioActual={usuarioActual} 
+            idioma={t} 
+            onClose={() => {}}
+          />
+        </div>
+
+               {/* LADO DERECHO: BLOQUE DE GRÁFICOS */}
+        <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <span>📊</span> {t.ingresosVsEgresos}
+          </h3>
+          {datosGrafico && datosGrafico.length > 0 && (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={datosGrafico} layout="vertical" margin={{ left: 40 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis 
+                  type="number" 
+                  tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} 
+                  stroke="#94a3b8" 
                 />
-              </div>
-
-              {/* LADO DERECHO: BLOQUE DE GRÁFICOS */}
-              <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 h-full">
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                  <span>📊</span> {t.ingresosVsEgresos}
-                </h3>
-                {datosGrafico && datosGrafico.length > 0 && (
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={datosGrafico} layout="vertical" margin={{ left: 40 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                      <XAxis 
-                        type="number" 
-                        tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} 
-                        stroke="#94a3b8" 
-                      />
-                      <YAxis dataKey="nombre" type="category" stroke="#94a3b8" width={80} />
-                      <Tooltip
-                        formatter={(v) => `$${v.toLocaleString()}`}
-                        contentStyle={{ backgroundColor: '#0f172a', borderColor: '#38bdf8', borderRadius: '8px' }}
-                      />
-                      <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill="#8884d8">
-                        {datosGrafico.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-                {(!datosGrafico || datosGrafico.length === 0) && (
-                  <div className="h-[200px] flex items-center justify-center text-gray-500">
-                    No hay datos suficientes para mostrar el gráfico
-                  </div>
-                )}
-                
-                {/* Leyenda de colores */}
-                <div className="mt-3 flex justify-center gap-4 text-xs flex-wrap">
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-500"></div><span>Ventas</span></div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>Gastos</span></div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500"></div><span>Compras</span></div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span>Capital</span></div>
-                  <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-cyan-500"></div><span>Utilidad</span></div>
-                </div>
-              </div>
+                <YAxis dataKey="nombre" type="category" stroke="#94a3b8" width={80} />
+                <Tooltip
+                  formatter={(v) => `$${v.toLocaleString()}`}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#38bdf8', borderRadius: '8px' }}
+                />
+                <Bar dataKey="valor" radius={[0, 4, 4, 0]} fill="#8884d8">
+                  {datosGrafico.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+          {(!datosGrafico || datosGrafico.length === 0) && (
+            <div className="h-[200px] flex items-center justify-center text-gray-500">
+              No hay datos suficientes para mostrar el gráfico
             </div>
+          )}
+          {/* Leyenda de colores */}
+          <div className="mt-3 flex justify-center gap-4 text-xs flex-wrap">
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-500"></div><span>Ventas</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-500"></div><span>Gastos</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-amber-500"></div><span>Compras</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span>Capital</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-cyan-500"></div><span>Utilidad</span></div>
+          </div>
+        </div>
+        
+      </div>
 
-                        {/* ============================================================
-                ACORDEONES PARA MÓVIL (PRODUCCIÓN Y REGISTRO MANUAL)
-            ============================================================ */}
+      {/* ============================================================
+          ACORDEONES PARA MÓVIL (PRODUCCIÓN Y REGISTRO MANUAL)
+      ============================================================ */}
 
-            {/* ACORDEÓN: AUDITORÍA DE PRODUCCIÓN */}
-            <div className="mb-4">
-              <button 
-                onClick={() => setShowProduccion(!showProduccion)}
-                className="w-full bg-[#1e293b] text-white p-4 rounded-xl flex justify-between items-center border border-blue-900/30 hover:bg-[#2a3a4a] transition-all"
-              >
-                <span className="font-bold">🏭 {t.produccion || 'Auditoría de Producción'}</span>
-                <span>{showProduccion ? '▲' : '▼'}</span>
-              </button>
-              {showProduccion && (
-                <div className="mt-2 p-4 bg-[#0f172a] rounded-xl border border-slate-800">
-                  <ProduccionForm 
-                    usuarioActual={usuarioActual} 
-                    idioma={idioma} 
-                    setInventario={setInventario}
-                    setMovimientos={setMovimientos}
-                    onSuccess={() => {
-                      setValidationMessage('✅ Producción auditada y cargada al inventario');
-                      setTimeout(() => setValidationMessage(null), 3000);
-                    }}
-                    onError={(error) => {
-                      setError(error.message);
-                      setTimeout(() => setError(null), 5000);
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+      {/* ACORDEÓN: AUDITORÍA DE PRODUCCIÓN */}
+      <div className="mb-4">
+        <button 
+          onClick={() => setShowProduccion(!showProduccion)}
+          className="w-full bg-[#1e293b] text-white p-4 rounded-xl flex justify-between items-center border border-blue-900/30 hover:bg-[#2a3a4a] transition-all"
+        >
+          <span className="font-bold">🏭 {t.produccion || 'Auditoría de Producción'}</span>
+          <span>{showProduccion ? '▲' : '▼'}</span>
+        </button>
+        {showProduccion && (
+          <div className="mt-2 p-4 bg-[#0f172a] rounded-xl border border-slate-800">
+            <ProduccionForm 
+              usuarioActual={usuarioActual} 
+              idioma={idioma} 
+              setInventario={setInventario}
+              setMovimientos={setMovimientos}
+              onSuccess={() => {
+                setValidationMessage('✅ Producción auditada y cargada al inventario');
+                setTimeout(() => setValidationMessage(null), 3000);
+              }}
+              onError={(error) => {
+                setError(error.message);
+                setTimeout(() => setError(null), 5000);
+              }}
+            />
+          </div>
+        )}
+      </div>
 
             {/* DICTAMEN DE AUDITORÍA (SIEMPRE VISIBLE) */}
             <div className="bg-[#1e293b] border border-blue-900/30 rounded-2xl p-6 mb-4">

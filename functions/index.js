@@ -1,11 +1,12 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 
 admin.initializeApp();
 
 // ============================================================
-// WEBHOOK SHOPIFY CON VALIDACIÓN HMAC (RAW BODY)
+// WEBHOOK SHOPIFY CON VALIDACIÓN HMAC
 // ============================================================
 exports.webhookShopify = functions.https.onRequest({
   rawBody: true
@@ -98,12 +99,15 @@ exports.webhookMercadoLibre = functions.https.onRequest({
 });
 
 // ============================================================
-// PROCESAR VENTAS AUTOMÁTICAS (CADA 5 MINUTOS)
-// ✅ LIMIT(30) para no exceder las 500 operaciones del batch
+// PROCESAR VENTAS AUTOMÁTICAS (CADA 5 MINUTOS) - V2
 // ============================================================
-exports.procesarVentasAutomaticas = functions.pubsub.schedule('every 5 minutes').onRun(async (context) => {
+exports.procesarVentasAutomaticas = onSchedule({
+  schedule: 'every 5 minutes',
+  memory: '256MiB',
+  timeoutSeconds: 540,
+  region: 'us-central1'
+}, async (event) => {
   try {
-    // ✅ Límite seguro de 30 ventas por ciclo
     const ventasPendientes = await admin.firestore()
       .collection('ventasAutomaticas')
       .where('procesado', '==', false)
@@ -112,7 +116,7 @@ exports.procesarVentasAutomaticas = functions.pubsub.schedule('every 5 minutes')
     
     if (ventasPendientes.empty) {
       console.log('No hay ventas pendientes');
-      return null;
+      return;
     }
     
     const batch = admin.firestore().batch();
@@ -147,20 +151,14 @@ exports.procesarVentasAutomaticas = functions.pubsub.schedule('every 5 minutes')
         procesadoEn: admin.firestore.FieldValue.serverTimestamp()
       });
       operacionesVenta++;
-      
       operacionesEnBatch += operacionesVenta;
       
-      // ✅ Seguridad: Si nos acercamos al límite, hacemos commit y continuamos
       if (operacionesEnBatch > 450) {
         await batch.commit();
-        console.log(`⚠️ Commit parcial: ${operacionesEnBatch} operaciones`);
-        // Crear nuevo batch para el resto
-        const newBatch = admin.firestore().batch();
         operacionesEnBatch = 0;
       }
     }
     
-    // ✅ Commit final
     if (operacionesEnBatch > 0) {
       await batch.commit();
     }
