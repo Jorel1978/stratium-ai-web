@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, increment, query, getDocs, where } from 'firebase/firestore';
 import { auditarOperacion } from '../logic/logicEngine';
 import { useEstrellaHueso } from '../hooks/useEstrellaHueso';
+import { useTranslation } from '../hooks/useTranslation';
+import { formatMoneyUniversal } from '../util/formatMoneyUniversal';
 
 const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProductoEnCatalogo, onSuccess, onError }) => {
+  const { t } = useTranslation();
+  
   const [formData, setFormData] = useState({
     monto: '',
     cantidad: '1',
@@ -30,24 +34,12 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
 
   // Formatear moneda según idioma
   const formatMoney = (valor, lang) => {
-    if (lang === 'en') {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0
-      }).format(Math.abs(valor));
-    }
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(Math.abs(valor));
+    const pais = lang === 'en' ? 'US' : 'CO';
+    return formatMoneyUniversal(valor, pais);
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA CALCULAR PRECIO SUGERIDO DE LIQUIDACIÓN
+  // FUNCIÓN PARA CALCULAR PRECIO SUGERIDO DE LIQUIDACIÓN
   // ============================================================
   const calcularPrecioLiquidacion = (costoUnitario, diasEnStock) => {
     if (!costoUnitario || costoUnitario <= 0) return null;
@@ -58,20 +50,20 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
     
     if (diasEnStock >= 180) {
       precio = costoUnitario * 0.8;
-      estrategia = '💀 PÉRDIDA CONTROLADA';
-      urgencia = '⚠️ URGENTE: más de 180 días';
+      estrategia = t('liquidacionPerdida') || '💀 PÉRDIDA CONTROLADA';
+      urgencia = t('urgencia180') || '⚠️ URGENTE: más de 180 días';
     } else if (diasEnStock >= 90) {
       precio = costoUnitario * 0.9;
-      estrategia = '💰 RECUPERAR CAPITAL';
-      urgencia = '⚠️ Alerta: más de 90 días';
+      estrategia = t('recuperarCapital') || '💰 RECUPERAR CAPITAL';
+      urgencia = t('urgencia90') || '⚠️ Alerta: más de 90 días';
     } else if (diasEnStock >= 60) {
       precio = costoUnitario * 1.0;
-      estrategia = '📦 AL COSTO';
-      urgencia = '⚡ Recupera inversión';
+      estrategia = t('alCosto') || '📦 AL COSTO';
+      urgencia = t('urgencia60') || '⚡ Recupera inversión';
     } else if (diasEnStock >= 30) {
       precio = costoUnitario * 1.1;
-      estrategia = '🔥 PROMOCIÓN LIGERA';
-      urgencia = '💡 Libera flujo de caja';
+      estrategia = t('promocionLigera') || '🔥 PROMOCIÓN LIGERA';
+      urgencia = t('urgencia30') || '💡 Libera flujo de caja';
     } else {
       return null;
     }
@@ -84,7 +76,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA OBTENER INFORMACIÓN DE PRODUCTO DESDE INVENTARIO
+  // FUNCIÓN PARA OBTENER INFORMACIÓN DE PRODUCTO DESDE INVENTARIO
   // ============================================================
   const obtenerInfoProducto = async (nombreProducto) => {
     if (!usuarioActual?.uid || !nombreProducto) return null;
@@ -126,7 +118,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
   };
 
   // ============================================================
-  // 🆕 FUNCIÓN PARA CARGAR PRODUCTOS CRÍTICOS Y ESTRELLA
+  // FUNCIÓN PARA CARGAR PRODUCTOS CRÍTICOS Y ESTRELLA
   // ============================================================
   const cargarProductosAuditoria = async () => {
     if (!usuarioActual?.uid) return;
@@ -180,7 +172,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         });
         setProductos(lista);
         
-        // Cargar productos críticos y estrella
         await cargarProductosAuditoria();
       } catch (error) {
         console.error('Error cargando productos:', error);
@@ -204,7 +195,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
       setProductosFiltrados(filtrados.slice(0, 10));
       setMostrarLista(filtrados.length > 0);
       
-      // Buscar información del producto seleccionado
       const productoExistente = filtrados.find(p => p.nombre.toLowerCase() === value.toLowerCase());
       if (productoExistente) {
         const info = await obtenerInfoProducto(productoExistente.nombre);
@@ -221,91 +211,9 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
     setMostrarLista(false);
     setProductosFiltrados([]);
     
-    // Obtener información del producto seleccionado
     const info = await obtenerInfoProducto(producto.nombre);
     setInfoProductoSeleccionado(info);
   };
-
-  const textos = {
-    es: {
-      titulo: 'Registro Manual de Movimientos',
-      tipo: 'Tipo de movimiento',
-      gasto: 'Gasto',
-      ingreso: 'Ingreso',
-      compra: 'Compra (inventario)',
-      venta: 'Venta',
-      fuentePago: 'Pagado con...',
-      fuenteNegocio: '💰 Fondos del negocio',
-      fuentePersonal: '👤 Fondos personales (Inyección de capital)',
-      monto: 'Monto Total',
-      cantidad: 'Cantidad (unidades)',
-      concepto: 'Producto',
-      fecha: 'Fecha',
-      tercero: 'Proveedor / Cliente',
-      tipoPago: 'Tipo de pago',
-      contado: '💰 Contado',
-      credito: '📅 Crédito',
-      fechaLimitePago: 'Fecha límite de pago',
-      fechaVencimientoProducto: 'Fecha de vencimiento del producto',
-      ejemploConcepto: 'Escribe el nombre del producto...',
-      guardar: 'Registrar Movimiento',
-      guardando: 'Guardando...',
-      exito: '✅ Movimiento registrado exitosamente',
-      advertenciaPersonal: '⚠️ Estás inyectando capital personal al negocio. Esto genera una deuda del negocio contigo.',
-      saldoInsuficiente: (saldo, monto) => `❌ No se puede registrar este gasto. Saldo insuficiente. Disponible: ${formatMoney(saldo, 'es')}. Necesitas: ${formatMoney(monto, 'es')}.`,
-      stockInsuficiente: (stock, solicitado) => `❌ No se puede registrar la venta. Stock insuficiente. Disponible: ${stock} unidades. Solicitado: ${solicitado} unidades.`,
-      productosCriticos: '🦴 Productos Críticos (HUESO)',
-      productosEstrella: '⭐ Productos Estrella',
-      sinProductosCriticos: '✅ No hay productos HUESO en inventario',
-      sinProductosEstrella: '⚠️ Aún no hay productos ESTRELLA',
-      infoProducto: '📊 Información del Producto',
-      clasificacion: 'Clasificación',
-      diasSinVentas: 'Días sin ventas',
-      margen: 'Margen',
-      precioLiquidacion: 'Precio sugerido para liquidar',
-      estrategia: 'Estrategia'
-    },
-    en: {
-      titulo: 'Manual Transaction Entry',
-      tipo: 'Transaction type',
-      gasto: 'Expense',
-      ingreso: 'Income',
-      compra: 'Purchase (inventory)',
-      venta: 'Sale',
-      fuentePago: 'Paid with...',
-      fuenteNegocio: '💰 Business funds',
-      fuentePersonal: '👤 Personal funds (Capital injection)',
-      monto: 'Total Amount',
-      cantidad: 'Quantity (units)',
-      concepto: 'Product',
-      fecha: 'Date',
-      tercero: 'Supplier / Customer',
-      tipoPago: 'Payment type',
-      contado: '💰 Cash',
-      credito: '📅 Credit',
-      fechaLimitePago: 'Payment deadline',
-      fechaVencimientoProducto: 'Product expiration date',
-      ejemploConcepto: 'Type the product name...',
-      guardar: 'Register Transaction',
-      guardando: 'Saving...',
-      exito: '✅ Transaction recorded successfully',
-      advertenciaPersonal: '⚠️ You are injecting personal capital into the business. This creates a debt from the business to you.',
-      saldoInsuficiente: (saldo, monto) => `❌ Cannot register this expense. Insufficient balance. Available: ${formatMoney(saldo, 'en')}. Needed: ${formatMoney(monto, 'en')}.`,
-      stockInsuficiente: (stock, solicitado) => `❌ Cannot register sale. Insufficient stock. Available: ${stock} units. Requested: ${solicitado} units.`,
-      productosCriticos: '🦴 Critical Products (BONE)',
-      productosEstrella: '⭐ Star Products',
-      sinProductosCriticos: '✅ No BONE products in inventory',
-      sinProductosEstrella: '⚠️ No star products yet',
-      infoProducto: '📊 Product Information',
-      clasificacion: 'Classification',
-      diasSinVentas: 'Days without sales',
-      margen: 'Margin',
-      precioLiquidacion: 'Suggested liquidation price',
-      estrategia: 'Strategy'
-    }
-  };
-
-  const t = textos[idioma] || textos.es;
 
   const getCategoria = (tipo) => {
     switch(tipo) {
@@ -348,41 +256,36 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setValidationError(null);
-  setSuccessMessage(null);
+    e.preventDefault();
+    setLoading(true);
+    setValidationError(null);
+    setSuccessMessage(null);
 
-  try {
-    const montoNum = parseFloat(formData.monto);
-    const cantidadNum = parseInt(formData.cantidad);
-    
-    // 👇 ALERTA DE PRODUCTO HUESO (NO BLOQUEANTE)
-    // Solo mostrar alerta si es COMPRA (no para ventas)
-    if (formData.tipo === 'compra' && formData.concepto) {
-      // Creamos un objeto producto temporal para la alerta
-      const productoParaAlerta = {
-        nombre: formData.concepto,
-        clasificacion: 'HUESO', // La alerta se dispara si el producto es HUESO
-        diasEnStock: 0
-      };
-      alertaCompraHueso(productoParaAlerta);
-    }
-    
-    if (isNaN(montoNum) || montoNum <= 0) {
-      setValidationError(idioma === 'es' 
-        ? '❌ El monto debe ser un número mayor a cero'
-        : '❌ Amount must be a number greater than zero');
-      setLoading(false);
-      return;
-    }
+    try {
+      const montoNum = parseFloat(formData.monto);
+      const cantidadNum = parseInt(formData.cantidad);
+      
+      if (formData.tipo === 'compra' && formData.concepto) {
+        const productoParaAlerta = {
+          nombre: formData.concepto,
+          clasificacion: 'HUESO',
+          diasEnStock: 0
+        };
+        alertaCompraHueso(productoParaAlerta);
+      }
+      
+      if (isNaN(montoNum) || montoNum <= 0) {
+        setValidationError(t('montoInvalido') || '❌ El monto debe ser un número mayor a cero');
+        setLoading(false);
+        return;
+      }
         
       const tipoFlujo = getTipoFlujo(formData.tipo);
       const categoria = getCategoria(formData.tipo);
       const costoUnitario = montoNum / cantidadNum;
       
       const tipoTexto = {
-        gasto: 'Gasto', ingreso: 'Ingreso', compra: 'Compra', venta: 'Venta'
+        gasto: t('gasto') || 'Gasto', ingreso: t('ingreso') || 'Ingreso', compra: t('compra') || 'Compra', venta: t('venta') || 'Venta'
       };
       
       let textoCompleto = `${tipoTexto[formData.tipo]}: ${cantidadNum}x ${formData.concepto} por ${montoNum}`;
@@ -411,14 +314,12 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
       const esAportePersonal = (tipoFlujo === 'egreso' && formData.fuentePago === 'personal');
       const esGastoNegocio = (tipoFlujo === 'egreso' && formData.fuentePago === 'negocio');
 
-      // ✅ VALIDACIÓN 1: Saldo insuficiente para gastos del negocio
       if (esGastoNegocio && saldoActual < montoNum) {
-        setValidationError(t.saldoInsuficiente(saldoActual, montoNum));
+        setValidationError(t('saldoInsuficiente', { saldo: formatMoney(saldoActual, idioma), monto: formatMoney(montoNum, idioma) }));
         setLoading(false);
         return;
       }
 
-      // ✅ VALIDACIÓN 2: Stock insuficiente para ventas
       if (formData.tipo === 'venta') {
         const inventarioRef = collection(db, 'inventario');
         const qInventario = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
@@ -430,13 +331,12 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         }
         
         if (stockActual < cantidadNum) {
-          setValidationError(t.stockInsuficiente(stockActual, cantidadNum));
+          setValidationError(t('stockInsuficiente', { stock: stockActual, solicitado: cantidadNum }));
           setLoading(false);
           return;
         }
       }
 
-      // Guardar producto en catálogo
       if (formData.tipo === 'compra' && guardarProductoEnCatalogo) {
         await guardarProductoEnCatalogo(formData.concepto, usuarioActual.uid);
       }
@@ -448,7 +348,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
           deudaConDueño: increment(montoNum),
           aportesPersonales: increment(montoNum)
         });
-        setValidationError(t.advertenciaPersonal);
+        setValidationError(t('advertenciaPersonal'));
         setTimeout(() => setValidationError(null), 5000);
       } else if (esGastoNegocio) {
         await updateDoc(userRef, {
@@ -456,7 +356,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         });
       }
 
-      // Guardar el movimiento en registros
       const registroData = {
         texto: textoCompleto,
         concepto: formData.concepto,
@@ -465,7 +364,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         categoria: categoria,
         emoji: formData.tipo === 'compra' ? '📦' : formData.tipo === 'venta' ? '💰' : auditoria.emoji,
         recomendacion: esAportePersonal 
-          ? (idioma === 'es' ? '💰 Aporte de capital personal. El negocio te debe este dinero.' : '💰 Personal capital injection. The business owes you this money.')
+          ? t('aportePersonalRecomendacion') || '💰 Aporte de capital personal. El negocio te debe este dinero.'
           : auditoria.recomendacion,
         cantidad: cantidadNum,
         costoUnitario: costoUnitario,
@@ -485,7 +384,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
       
       await addDoc(collection(db, 'registros'), registroData);
 
-      // Actualizar inventario si es compra o venta
       if (formData.tipo === 'compra' || formData.tipo === 'venta') {
         const inventarioRef = collection(db, 'inventario');
         const qInv = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
@@ -540,17 +438,15 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         }
       }
 
-      setSuccessMessage(t.exito);
+      setSuccessMessage(t('exito') || '✅ Movimiento registrado exitosamente');
       limpiarFormulario();
-      
-      // Recargar productos críticos y estrella después de guardar
       await cargarProductosAuditoria();
       
       if (onSuccess) onSuccess();
 
     } catch (error) {
       console.error('Error guardando registro:', error);
-      setValidationError(`${t.errorGeneral || 'Error'}: ${error.message}`);
+      setValidationError(`${t('errorGeneral') || 'Error'}: ${error.message}`);
       if (onError) onError(error);
     } finally {
       setLoading(false);
@@ -561,7 +457,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
     <div className="bg-[#1e293b] rounded-2xl p-6 mb-8 border border-blue-900/30">
       <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
         <span>✏️</span> 
-        {t.titulo}
+        {t('tituloRegistroManual') || 'Registro Manual de Movimientos'}
       </h3>
 
       {successMessage && (
@@ -576,13 +472,12 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         </div>
       )}
 
-      {/* 🆕 SECCIÓN: PRODUCTOS CRÍTICOS Y ESTRELLA */}
+      {/* Productos Críticos y Estrella */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Productos Críticos (HUESO) */}
         <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
-          <h4 className="text-red-400 text-sm font-bold mb-2">{t.productosCriticos}</h4>
+          <h4 className="text-red-400 text-sm font-bold mb-2">{t('productosCriticos') || '🦴 Productos Críticos (HUESO)'}</h4>
           {productosCriticos.length === 0 ? (
-            <p className="text-gray-500 text-xs">{t.sinProductosCriticos}</p>
+            <p className="text-gray-500 text-xs">{t('sinProductosCriticos') || '✅ No hay productos HUESO en inventario'}</p>
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {productosCriticos.map((p, idx) => {
@@ -590,9 +485,9 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
                 return (
                   <div key={idx} className="border-b border-red-500/20 pb-2">
                     <p className="text-white text-sm font-medium">{p.nombre}</p>
-                    <p className="text-gray-400 text-xs">📦 {p.cantidad} und | ⏱️ {p.diasEnStock} días sin rotación</p>
+                    <p className="text-gray-400 text-xs">📦 {p.cantidad} und | ⏱️ {p.diasEnStock} {t('diasSinRotacion') || 'días sin rotación'}</p>
                     {precioLiq && (
-                      <p className="text-cyan-400 text-xs">💰 Sugerido: {formatMoney(precioLiq.precio, idioma)} ({precioLiq.estrategia})</p>
+                      <p className="text-cyan-400 text-xs">{t('precioSugerido') || '💰 Sugerido'}: {formatMoney(precioLiq.precio, idioma)} ({precioLiq.estrategia})</p>
                     )}
                   </div>
                 );
@@ -601,17 +496,16 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
           )}
         </div>
 
-        {/* Productos Estrella */}
         <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3">
-          <h4 className="text-green-400 text-sm font-bold mb-2">{t.productosEstrella}</h4>
+          <h4 className="text-green-400 text-sm font-bold mb-2">{t('productosEstrella') || '⭐ Productos Estrella'}</h4>
           {productosEstrella.length === 0 ? (
-            <p className="text-gray-500 text-xs">{t.sinProductosEstrella}</p>
+            <p className="text-gray-500 text-xs">{t('sinProductosEstrella') || '⚠️ Aún no hay productos ESTRELLA'}</p>
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {productosEstrella.map((p, idx) => (
                 <div key={idx} className="border-b border-green-500/20 pb-2">
                   <p className="text-white text-sm font-medium">{p.nombre}</p>
-                  <p className="text-green-400 text-xs">⭐ Margen: {p.margen}%</p>
+                  <p className="text-green-400 text-xs">⭐ {t('margen') || 'Margen'}: {p.margen}%</p>
                 </div>
               ))}
             </div>
@@ -619,31 +513,31 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
         </div>
       </div>
 
-      {/* 🆕 SECCIÓN: INFORMACIÓN DEL PRODUCTO SELECCIONADO */}
+      {/* Información del producto seleccionado */}
       {infoProductoSeleccionado && infoProductoSeleccionado.existe && (
         <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-          <h4 className="text-blue-400 text-sm font-bold mb-2">{t.infoProducto}</h4>
+          <h4 className="text-blue-400 text-sm font-bold mb-2">{t('infoProducto') || '📊 Información del Producto'}</h4>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <p className="text-gray-400">{t.clasificacion}:</p>
+            <p className="text-gray-400">{t('clasificacion') || 'Clasificación'}:</p>
             <p className={`font-bold ${
               infoProductoSeleccionado.clasificacion === 'ESTRELLA' ? 'text-green-400' :
               infoProductoSeleccionado.clasificacion === 'HUESO' ? 'text-red-400' : 'text-yellow-400'
             }`}>
               {infoProductoSeleccionado.clasificacion}
             </p>
-            <p className="text-gray-400">{t.diasSinVentas}:</p>
+            <p className="text-gray-400">{t('diasSinVentas') || 'Días sin ventas'}:</p>
             <p className="text-white">{infoProductoSeleccionado.diasEnStock} días</p>
             {infoProductoSeleccionado.margenNeto > 0 && (
               <>
-                <p className="text-gray-400">{t.margen}:</p>
+                <p className="text-gray-400">{t('margen') || 'Margen'}:</p>
                 <p className="text-white">{infoProductoSeleccionado.margenNeto}%</p>
               </>
             )}
             {infoProductoSeleccionado.precioLiquidacion && (
               <>
-                <p className="text-gray-400">{t.precioLiquidacion}:</p>
+                <p className="text-gray-400">{t('precioLiquidacion') || 'Precio sugerido para liquidar'}:</p>
                 <p className="text-cyan-400">{formatMoney(infoProductoSeleccionado.precioLiquidacion.precio, idioma)}</p>
-                <p className="text-gray-400">{t.estrategia}:</p>
+                <p className="text-gray-400">{t('estrategia') || 'Estrategia'}:</p>
                 <p className="text-yellow-400">{infoProductoSeleccionado.precioLiquidacion.estrategia}</p>
               </>
             )}
@@ -653,9 +547,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Tipo de movimiento */}
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.tipo}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('tipoMovimiento') || 'Tipo de movimiento'}</label>
             <select
               name="tipo"
               value={formData.tipo}
@@ -663,32 +556,30 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
               className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               required
             >
-              <option value="gasto">{t.gasto}</option>
-              <option value="ingreso">{t.ingreso}</option>
-              <option value="compra">{t.compra}</option>
-              <option value="venta">{t.venta}</option>
+              <option value="gasto">{t('gasto') || 'Gasto'}</option>
+              <option value="ingreso">{t('ingreso') || 'Ingreso'}</option>
+              <option value="compra">{t('compraInventario') || 'Compra (inventario)'}</option>
+              <option value="venta">{t('venta') || 'Venta'}</option>
             </select>
           </div>
 
-          {/* Fuente de pago (solo para egresos) */}
           {(formData.tipo === 'gasto' || formData.tipo === 'compra') && (
             <div>
-              <label className="block text-gray-400 text-sm mb-1">{t.fuentePago}</label>
+              <label className="block text-gray-400 text-sm mb-1">{t('fuentePago') || 'Pagado con...'}</label>
               <select
                 name="fuentePago"
                 value={formData.fuentePago}
                 onChange={(e) => setFormData(prev => ({ ...prev, fuentePago: e.target.value }))}
                 className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               >
-                <option value="negocio">{t.fuenteNegocio}</option>
-                <option value="personal">{t.fuentePersonal}</option>
+                <option value="negocio">{t('fuenteNegocio') || '💰 Fondos del negocio'}</option>
+                <option value="personal">{t('fuentePersonal') || '👤 Fondos personales (Inyección de capital)'}</option>
               </select>
             </div>
           )}
 
-          {/* Cantidad */}
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.cantidad}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('cantidad') || 'Cantidad (unidades)'}</label>
             <input
               type="number"
               name="cantidad"
@@ -702,9 +593,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             />
           </div>
 
-          {/* Monto */}
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.monto}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('montoTotal') || 'Monto Total'}</label>
             <input
               type="number"
               name="monto"
@@ -718,9 +608,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             />
           </div>
 
-          {/* Fecha */}
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.fecha}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('fecha') || 'Fecha'}</label>
             <input
               type="date"
               name="fecha"
@@ -732,9 +621,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             />
           </div>
 
-          {/* Proveedor / Cliente */}
           <div>
-            <label className="block text-gray-400 text-sm mb-1">{t.tercero}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('tercero') || 'Proveedor / Cliente'}</label>
             <input
               type="text"
               name="tercero"
@@ -745,26 +633,24 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             />
           </div>
 
-          {/* Tipo de pago (solo para compras y ventas) */}
           {(formData.tipo === 'compra' || formData.tipo === 'venta') && (
             <div>
-              <label className="block text-gray-400 text-sm mb-1">{t.tipoPago}</label>
+              <label className="block text-gray-400 text-sm mb-1">{t('tipoPago') || 'Tipo de pago'}</label>
               <select
                 name="tipoPago"
                 value={formData.tipoPago}
                 onChange={(e) => setFormData(prev => ({ ...prev, tipoPago: e.target.value, fechaLimitePago: '' }))}
                 className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               >
-                <option value="contado">{t.contado}</option>
-                <option value="credito">{t.credito}</option>
+                <option value="contado">{t('contado') || '💰 Contado'}</option>
+                <option value="credito">{t('credito') || '📅 Crédito'}</option>
               </select>
             </div>
           )}
 
-          {/* Fecha límite de pago (solo si es crédito) */}
           {(formData.tipo === 'compra' || formData.tipo === 'venta') && formData.tipoPago === 'credito' && (
             <div>
-              <label className="block text-gray-400 text-sm mb-1">{t.fechaLimitePago}</label>
+              <label className="block text-gray-400 text-sm mb-1">{t('fechaLimitePago') || 'Fecha límite de pago'}</label>
               <input
                 type="date"
                 name="fechaLimitePago"
@@ -776,9 +662,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             </div>
           )}
 
-          {/* Producto */}
           <div className="md:col-span-2 relative">
-            <label className="block text-gray-400 text-sm mb-1">{t.concepto}</label>
+            <label className="block text-gray-400 text-sm mb-1">{t('producto') || 'Producto'}</label>
             <input
               type="text"
               name="concepto"
@@ -792,13 +677,12 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
               onBlur={() => {
                 setTimeout(() => setMostrarLista(false), 200);
               }}
-              placeholder={t.ejemploConcepto}
+              placeholder={t('ejemploConcepto') || 'Escribe el nombre del producto...'}
               className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               required
               autoComplete="off"
             />
             
-            {/* Lista desplegable de productos */}
             {mostrarLista && productosFiltrados.length > 0 && (
               <div className="absolute z-10 w-full bg-[#0f172a] border border-blue-900/30 rounded-lg mt-1 max-h-48 overflow-y-auto">
                 {productosFiltrados.map(producto => (
@@ -814,10 +698,9 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             )}
           </div>
 
-          {/* Fecha de vencimiento del producto (solo para compras) */}
           {formData.tipo === 'compra' && (
             <div className="md:col-span-2">
-              <label className="block text-gray-400 text-sm mb-1">{t.fechaVencimientoProducto}</label>
+              <label className="block text-gray-400 text-sm mb-1">{t('fechaVencimientoProducto') || 'Fecha de vencimiento del producto'}</label>
               <input
                 type="date"
                 name="fechaVencimientoProducto"
@@ -827,7 +710,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
                 className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               />
               <p className="text-xs text-gray-500 mt-1">
-                {idioma === 'es' ? 'Dejar en blanco si no aplica' : 'Leave blank if not applicable'}
+                {t('dejarBlanco') || 'Dejar en blanco si no aplica'}
               </p>
             </div>
           )}
@@ -838,7 +721,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
           disabled={loading}
           className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 disabled:opacity-50"
         >
-          {loading ? t.guardando : t.guardar}
+          {loading ? (t('guardando') || 'Guardando...') : (t('guardar') || 'Registrar Movimiento')}
         </button>
       </form>
     </div>

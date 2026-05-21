@@ -3,6 +3,7 @@ import { getFirestore, collection, query, where, orderBy, limit, getCountFromSer
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useSoporteIA } from '../hooks/useSoporteIA';
 import ModalCreditosSoporte from './ModalCreditosSoporte';
+import { iniciarEscuchaVoz } from '../services/voiceInput';
 
 const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, diagnosticoBienvenida }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,6 +12,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
   const [loading, setLoading] = useState(false);
   const [mensajesUsados, setMensajesUsados] = useState(0);
   const [mostrarModalCreditos, setMostrarModalCreditos] = useState(false);
+  const [escuchandoVoz, setEscuchandoVoz] = useState(false);
   const messagesEndRef = useRef(null);
   const db = getFirestore();
   const functions = getFunctions();
@@ -33,6 +35,152 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
     elite: 500
   };
   const limiteMensajes = limites[planSeguro] || 20;
+
+  // ============================================================
+  // 🎤 FUNCIÓN PARA INICIAR DICTADO POR VOZ
+  // ============================================================
+  const iniciarDictadoVoz = () => {
+    if (escuchandoVoz) return;
+    
+    setEscuchandoVoz(true);
+    iniciarEscuchaVoz(
+      (texto) => {
+        // Cuando se reconoce voz, agregar al input
+        setInput(texto);
+        setEscuchandoVoz(false);
+        // Opcional: enviar automáticamente después de dictar
+        setTimeout(() => {
+          if (texto.trim()) {
+            // Simular el envío
+            const fakeEvent = { key: 'Enter' };
+            enviarMensajeConTexto(texto);
+          }
+        }, 500);
+      },
+      (error) => {
+        console.error('Error de voz:', error);
+        setEscuchandoVoz(false);
+        // Mostrar mensaje de error amigable
+        const errorMsg = idioma === 'es' 
+          ? 'No entendí. Intenta de nuevo o escribe el comando.'
+          : 'I didn\'t understand. Try again or type the command.';
+        setMessages(prev => [...prev, { 
+          texto: errorMsg, 
+          esUsuario: false, 
+          fecha: null,
+          fechaLocal: obtenerFechaLocal()
+        }]);
+      },
+      'es-CO'
+    );
+  };
+
+  // Función auxiliar para enviar mensaje con texto específico
+  const enviarMensajeConTexto = async (textoEnviar) => {
+    if (!textoEnviar.trim()) return;
+    
+    const fechaLocal = obtenerFechaLocal();
+    const userMessage = { 
+      texto: textoEnviar, 
+      esUsuario: true, 
+      fecha: null,
+      fechaLocal: fechaLocal
+    };
+    setMessages(prev => [...prev, userMessage]);
+    const preguntaUsuario = textoEnviar;
+    setInput('');
+    setLoading(true);
+
+    try {
+      // PRIMERO: Intentar con el bot de comandos
+      const respuestaBot = await ejecutarComandoBot(preguntaUsuario);
+      
+      if (respuestaBot && !respuestaBot.includes('Comandos disponibles')) {
+        setMessages(prev => [...prev, { 
+          texto: respuestaBot, 
+          esUsuario: false, 
+          fecha: null,
+          fechaLocal: obtenerFechaLocal()
+        }]);
+        setLoading(false);
+        return;
+      }
+      
+      // SEGUNDO: Intentar responder localmente
+      const respuestaLocal = await procesarPreguntaLocal(preguntaUsuario);
+      
+      let respuestaIA;
+      if (respuestaLocal) {
+        respuestaIA = respuestaLocal;
+      } else {
+        const verificacion = await verificarCredito();
+        
+        if (!verificacion.valido) {
+          const mensaje = idioma === 'es'
+            ? `⚠️ Has agotado tus consultas de soporte IA de este mes. Te quedan ${creditosDisponibles} consultas disponibles.`
+            : `⚠️ You have exhausted your AI support consultations for this month. You have ${creditosDisponibles} consultations left.`;
+          
+          setMessages(prev => [...prev, { 
+            texto: mensaje, 
+            esUsuario: false, 
+            fecha: null,
+            fechaLocal: obtenerFechaLocal()
+          }]);
+          setMostrarModalCreditos(true);
+          setLoading(false);
+          return;
+        }
+        
+        const soporteIA = httpsCallable(functions, 'soporteIA');
+        const result = await soporteIA({ 
+          pregunta: preguntaUsuario, 
+          idioma, 
+          plan: planSeguro, 
+          userId: usuarioActual?.uid,
+          fechaLocal: fechaLocal
+        });
+        respuestaIA = result.data.respuesta;
+        await consumirCredito();
+      }
+
+      setMessages(prev => [...prev, { 
+        texto: respuestaIA, 
+        esUsuario: false, 
+        fecha: null,
+        fechaLocal: obtenerFechaLocal()
+      }]);
+      
+    } catch (error) {
+      console.error('Error en soporte:', error);
+      const errorMessage = idioma === 'es' 
+        ? 'Lo siento, hubo un error. Por favor intenta de nuevo más tarde.'
+        : 'Sorry, there was an error. Please try again later.';
+      setMessages(prev => [...prev, { 
+        texto: errorMessage, 
+        esUsuario: false, 
+        fecha: null,
+        fechaLocal: obtenerFechaLocal()
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================================
+  // 🆕 FUNCIÓN PARA LLAMAR AL BOT DE COMANDOS
+  // ============================================================
+  const ejecutarComandoBot = async (comando) => {
+    const functions = getFunctions();
+    const callable = httpsCallable(functions, 'ejecutarComandoBasico');
+    
+    try {
+      const result = await callable({ comando, idioma });
+      return result.data.respuesta;
+    } catch (error) {
+      console.error('Error llamando al bot:', error);
+      return null;
+    }
+  };
 
   const cargarContadorMensajes = async () => {
     if (!usuarioActual?.uid) return;
@@ -102,7 +250,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
   };
 
   // ============================================================
-  // 🆕 DIAGNÓSTICO DE BIENVENIDA (NUEVA FUNCIONALIDAD)
+  // 🆕 DIAGNÓSTICO DE BIENVENIDA
   // ============================================================
   useEffect(() => {
     if (isOpen && messages.length === 0 && diagnosticoBienvenida) {
@@ -443,84 +591,10 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
     return null;
   };
 
-    const enviarMensaje = async () => {
+  const enviarMensaje = async () => {
     if (!input.trim()) return;
-    
-    const fechaLocal = obtenerFechaLocal();
-    const userMessage = { 
-      texto: input, 
-      esUsuario: true, 
-      fecha: null,
-      fechaLocal: fechaLocal
-    };
-    setMessages(prev => [...prev, userMessage]);
-    const preguntaUsuario = input;
+    await enviarMensajeConTexto(input);
     setInput('');
-    setLoading(true);
-
-    try {
-      // ✅ PRIMERO: Intentar responder localmente (SIEMPRE GRATIS)
-      const respuestaLocal = await procesarPreguntaLocal(preguntaUsuario);
-      
-      let respuestaIA;
-      if (respuestaLocal) {
-        respuestaIA = respuestaLocal;
-      } else {
-        // ✅ SOLO SI NO HAY RESPUESTA LOCAL: Verificar y consumir créditos para IA
-        const verificacion = await verificarCredito();
-        
-        if (!verificacion.valido) {
-          const mensaje = idioma === 'es'
-            ? `⚠️ Has agotado tus consultas de soporte IA de este mes. Te quedan ${creditosDisponibles} consultas disponibles.`
-            : `⚠️ You have exhausted your AI support consultations for this month. You have ${creditosDisponibles} consultations left.`;
-          
-          setMessages(prev => [...prev, { 
-            texto: mensaje, 
-            esUsuario: false, 
-            fecha: null,
-            fechaLocal: obtenerFechaLocal()
-          }]);
-          setMostrarModalCreditos(true);
-          setLoading(false);
-          return;
-        }
-        
-        const soporteIA = httpsCallable(functions, 'soporteIA');
-        const result = await soporteIA({ 
-          pregunta: preguntaUsuario, 
-          idioma, 
-          plan: planSeguro, 
-          userId: usuarioActual?.uid,
-          fechaLocal: fechaLocal
-        });
-        respuestaIA = result.data.respuesta;
-        
-        // ✅ CONSUMIR CRÉDITO SOLO DESPUÉS DE UNA LLAMADA EXITOSA A IA
-        await consumirCredito();
-      }
-
-      const botMessage = { 
-        texto: respuestaIA, 
-        esUsuario: false, 
-        fecha: null,
-        fechaLocal: obtenerFechaLocal()
-      };
-      setMessages(prev => [...prev, botMessage]);
-      
-    } catch (error) {
-      console.error('Error en soporte:', error);
-      const errorMessage = idioma === 'es' 
-        ? 'Lo siento, hubo un error. Por favor intenta de nuevo más tarde.'
-        : 'Sorry, there was an error. Please try again later.';
-      setMessages(prev => [...prev, { 
-        texto: errorMessage, 
-        esUsuario: false, 
-        fecha: null,
-        fechaLocal: obtenerFechaLocal()
-      }]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   useEffect(() => {
@@ -618,6 +692,18 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
                 disabled={loading}
               />
               <button
+                onClick={iniciarDictadoVoz}
+                disabled={loading || escuchandoVoz}
+                className={`px-3 py-2 rounded-lg transition-all ${
+                  escuchandoVoz 
+                    ? 'bg-red-600 animate-pulse text-white' 
+                    : 'bg-purple-600 hover:bg-purple-500 text-white'
+                } disabled:opacity-50`}
+                title={idioma === 'es' ? 'Dictar comando por voz' : 'Voice command'}
+              >
+                🎤
+              </button>
+              <button
                 onClick={enviarMensaje}
                 disabled={loading || !input.trim()}
                 className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg transition-all disabled:opacity-50"
@@ -625,6 +711,11 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
                 {idioma === 'es' ? 'Enviar' : 'Send'}
               </button>
             </div>
+            {escuchandoVoz && (
+              <p className="text-xs text-purple-400 mt-2 animate-pulse">
+                🎤 {idioma === 'es' ? 'Escuchando... Habla ahora' : 'Listening... Speak now'}
+              </p>
+            )}
             <div className="flex justify-between items-center mt-2">
               <p className="text-xs text-gray-500">
                 {mensajesUsados}/{limiteMensajes} {idioma === 'es' ? 'mensajes este mes' : 'messages this month'}

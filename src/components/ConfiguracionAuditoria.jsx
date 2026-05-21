@@ -1,10 +1,13 @@
 // components/ConfiguracionAuditoria.jsx
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
 import { useAuditEngine } from '../hooks/useAuditEngine';
+import { useTranslation } from '../hooks/useTranslation';
+
+const db = getFirestore();
 
 const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
+  const { t } = useTranslation();
   const [config, setConfig] = useState({
     region: 'AMERICA_SUR',
     gastosFijosMensuales: 0,
@@ -38,7 +41,7 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
   const handleGuardar = async () => {
     if (!usuarioActual?.uid) return;
     if (config.gastosFijosMensuales <= 0) {
-      setMensaje('⚠️ Los gastos fijos mensuales son obligatorios');
+      setMensaje(t('fixedCostsRequired') || '⚠️ Los gastos fijos mensuales son obligatorios');
       setTimeout(() => setMensaje(null), 3000);
       return;
     }
@@ -52,7 +55,7 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
         userId: usuarioActual.uid,
         actualizado: new Date().toISOString()
       });
-      setMensaje('✅ Configuración guardada exitosamente');
+      setMensaje(t('configSaved') || '✅ Configuración guardada exitosamente');
       setTimeout(() => setMensaje(null), 3000);
       setTimeout(() => {
         if (onClose) onClose();
@@ -60,46 +63,23 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
       }, 1500);
     } catch (error) {
       console.error('Error guardando:', error);
-      setMensaje('❌ Error al guardar la configuración');
+      setMensaje(t('configError') || '❌ Error al guardar la configuración');
     } finally {
       setGuardando(false);
     }
   };
 
-  const textos = {
-    es: {
-      titulo: '⚙️ Configuración de Auditoría',
-      descripcion: 'Define los parámetros financieros de tu negocio para una auditoría precisa',
-      region: 'Región de operación',
-      gastosFijos: 'Gastos Fijos Mensuales',
-      gastosFijosAyuda: 'Arriendo + Servicios + Nómina Administrativa + Software + Publicidad',
-      plataforma: 'Plataforma de venta principal',
-      guardar: 'Guardar Configuración',
-      cerrar: 'Cerrar'
-    },
-    en: {
-      titulo: '⚙️ Audit Configuration',
-      descripcion: 'Define your business financial parameters for accurate auditing',
-      region: 'Region of operation',
-      gastosFijos: 'Monthly Fixed Expenses',
-      gastosFijosAyuda: 'Rent + Utilities + Admin Payroll + Software + Advertising',
-      plataforma: 'Main selling platform',
-      guardar: 'Save Configuration',
-      cerrar: 'Close'
-    }
-  };
-
-  const t = textos[idioma] || textos.es;
-
   return (
     <div className="bg-[#1e293b] rounded-2xl p-6 border border-blue-900/30 shadow-2xl">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-xl font-bold text-white">{t.titulo}</h3>
+        <h3 className="text-xl font-bold text-white">{t('auditConfigTitle') || '⚙️ Configuración de Auditoría'}</h3>
         {onClose && (
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
         )}
       </div>
-      <p className="text-gray-400 text-sm mb-4">{t.descripcion}</p>
+      <p className="text-gray-400 text-sm mb-4">
+        {t('auditConfigSubtitle') || 'Define los parámetros financieros de tu negocio para una auditoría precisa'}
+      </p>
       
       {mensaje && (
         <div className="mb-4 p-3 bg-cyan-900/30 border border-cyan-500/30 rounded-lg text-cyan-400 text-sm">
@@ -109,7 +89,7 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
       
       <div className="space-y-4">
         <div>
-          <label className="block text-gray-400 text-sm mb-1">{t.region}</label>
+          <label className="block text-gray-400 text-sm mb-1">{t('operationRegion') || 'Región de operación'}</label>
           <select
             value={config.region}
             onChange={(e) => setConfig({ ...config, region: e.target.value })}
@@ -122,7 +102,7 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
         </div>
         
         <div>
-          <label className="block text-gray-400 text-sm mb-1">{t.gastosFijos}</label>
+          <label className="block text-gray-400 text-sm mb-1">{t('monthlyFixedCosts') || 'Gastos Fijos Mensuales'}</label>
           <input
             type="number"
             value={config.gastosFijosMensuales}
@@ -131,11 +111,13 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
             placeholder="Ej: 2000000"
             required
           />
-          <p className="text-gray-500 text-xs mt-1">{t.gastosFijosAyuda}</p>
+          <p className="text-gray-500 text-xs mt-1">
+            {t('fixedCostsPlaceholder') || 'Arriendo + Servicios + Nómina Administrativa + Software + Publicidad'}
+          </p>
         </div>
         
         <div>
-          <label className="block text-gray-400 text-sm mb-1">{t.plataforma}</label>
+          <label className="block text-gray-400 text-sm mb-1">{t('mainSalesPlatform') || 'Plataforma de venta principal'}</label>
           <select
             value={config.plataforma}
             onChange={(e) => setConfig({ ...config, plataforma: e.target.value })}
@@ -153,14 +135,14 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
             disabled={guardando}
             className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 disabled:opacity-50"
           >
-            {guardando ? 'Guardando...' : t.guardar}
+            {guardando ? (t('saving') || 'Guardando...') : (t('saveConfig') || 'Guardar Configuración')}
           </button>
           {onClose && (
             <button
               onClick={onClose}
               className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300"
             >
-              {t.cerrar}
+              {t('closeConfig') || 'Cerrar'}
             </button>
           )}
         </div>
@@ -170,5 +152,4 @@ const ConfiguracionAuditoria = ({ usuarioActual, idioma, onClose }) => {
 };
 
 export default ConfiguracionAuditoria;
-
 

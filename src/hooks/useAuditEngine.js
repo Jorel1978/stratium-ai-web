@@ -1,7 +1,7 @@
 // hooks/useAuditEngine.js
-// Stratium AI v2.2-PRO - AUDITOR ENGINE (HARDENED + OPTIMIZED)
+// Stratium AI v2.4-INTERNATIONAL - AUDITOR ENGINE (HARDENED + OPTIMIZED)
 // Validaciones estrictas, sin NaN, consistencia matemática garantizada
-// Correcciones: sin doble castigo por devoluciones, factor flete realista, márgenes duales
+// Detección de región multi-fuente con caché local
 
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
@@ -204,8 +204,180 @@ const safeDivide = (numerator, denominator, context = '') => {
 };
 
 // ============================================================
-// DETECCIÓN DE REGIÓN
+// DETECCIÓN DE REGIÓN CON MÚLTIPLES FUENTES Y CACHE
 // ============================================================
+
+// Cache de región detectada (persistente en localStorage)
+const REGION_CACHE_KEY = 'stratium_region_detectada';
+const REGION_CACHE_TIME_KEY = 'stratium_region_timestamp';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 horas
+
+// Fuentes de detección de país (orden de prioridad)
+const DETECTION_SOURCES = [
+  {
+    name: 'ipwhois',
+    url: 'https://ipwhois.app/json/',
+    parse: (data) => data.country_code,
+    rateLimit: 10000, // 10k requests/mes en plan gratuito
+    timeout: 3000
+  },
+  {
+    name: 'ipapi',
+    url: 'https://ipapi.co/json/',
+    parse: (data) => data.country_code,
+    rateLimit: 1000, // 1000 requests/día en plan gratuito
+    timeout: 3000
+  },
+  {
+    name: 'ipinfo',
+    url: 'https://ipinfo.io/json/',
+    parse: (data) => data.country,
+    rateLimit: 50000, // 50k requests/mes en plan gratuito
+    timeout: 3000
+  },
+  {
+    name: 'geoplugin',
+    url: 'http://www.geoplugin.net/json.gp',
+    parse: (data) => data.geoplugin_countryCode,
+    rateLimit: 120, // 120 requests/minuto
+    timeout: 3000
+  }
+];
+
+// Verificar si tenemos caché válida
+const getCachedRegion = () => {
+  try {
+    const cached = localStorage.getItem(REGION_CACHE_KEY);
+    const timestamp = localStorage.getItem(REGION_CACHE_TIME_KEY);
+    
+    if (cached && timestamp && (Date.now() - parseInt(timestamp)) < CACHE_DURATION) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    console.warn('Error leyendo caché de región:', e);
+  }
+  return null;
+};
+
+// Guardar región en caché
+const setCachedRegion = (regionKey, regionData, paisCode) => {
+  try {
+    localStorage.setItem(REGION_CACHE_KEY, JSON.stringify({ regionKey, regionData, paisCode }));
+    localStorage.setItem(REGION_CACHE_TIME_KEY, Date.now().toString());
+  } catch (e) {
+    console.warn('Error guardando caché de región:', e);
+  }
+};
+
+// Detectar país por fetch con timeout
+const fetchWithTimeout = (url, timeout = 3000) => {
+  return Promise.race([
+    fetch(url),
+    new Promise((_, reject) => 
+      setTimeout(() => reject(new Error(`Timeout: ${url}`)), timeout)
+    )
+  ]);
+};
+
+// Detectar región vía API (con múltiples fuentes)
+const detectarRegionPorAPI = async () => {
+  for (const source of DETECTION_SOURCES) {
+    try {
+      console.log(`🌐 Intentando detección con: ${source.name}`);
+      const response = await fetchWithTimeout(source.url, source.timeout);
+      
+      if (!response.ok) {
+        console.warn(`⚠️ ${source.name} respondió con status ${response.status}`);
+        continue;
+      }
+      
+      const data = await response.json();
+      const paisCode = source.parse(data);
+      
+      if (paisCode && typeof paisCode === 'string' && paisCode.length === 2) {
+        console.log(`✅ Detectado país: ${paisCode} (fuente: ${source.name})`);
+        return paisCode;
+      }
+    } catch (error) {
+      console.warn(`❌ Error con ${source.name}:`, error.message);
+      // Continuar con la siguiente fuente
+    }
+  }
+  return null;
+};
+
+// Detectar región por navegador (fallback)
+const detectarRegionPorNavegador = () => {
+  try {
+    // Intentar con la zona horaria (aproximado)
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log(`🌍 Zona horaria detectada: ${timezone}`);
+    
+    // Mapeo básico de timezones a países
+    const timezoneMap = {
+      'America/Bogota': 'CO', 'America/Mexico_City': 'MX', 'America/Argentina/Buenos_Aires': 'AR',
+      'America/Santiago': 'CL', 'America/Lima': 'PE', 'America/Montevideo': 'UY',
+      'America/New_York': 'US', 'America/Los_Angeles': 'US', 'America/Chicago': 'US',
+      'Europe/Madrid': 'ES', 'Europe/London': 'GB', 'Europe/Berlin': 'DE',
+      'Europe/Paris': 'FR', 'Europe/Rome': 'IT'
+    };
+    
+    for (const [tz, code] of Object.entries(timezoneMap)) {
+      if (timezone.includes(tz)) return code;
+    }
+    
+    // Fallback: usar idioma del navegador
+    const language = navigator.language || navigator.userLanguage;
+    const langMap = { 'es': 'CO', 'en': 'US', 'es-MX': 'MX', 'es-AR': 'AR', 'es-ES': 'ES', 'en-GB': 'GB' };
+    
+    return langMap[language] || langMap[language?.substring(0, 2)] || null;
+  } catch (e) {
+    console.warn('Error detectando región por navegador:', e);
+    return null;
+  }
+};
+
+// Función principal de detección (exportable)
+export const detectarRegionPorIP = async () => {
+  // 1. Verificar caché
+  const cached = getCachedRegion();
+  if (cached) {
+    console.log('📦 Usando región desde caché:', cached);
+    return { regionKey: cached.regionKey, regionData: cached.regionData, paisCode: cached.paisCode };
+  }
+  
+  // 2. Intentar detección por API externa
+  let paisCode = await detectarRegionPorAPI();
+  
+  // 3. Fallback: detección por navegador
+  if (!paisCode) {
+    console.log('🔄 Fallback a detección por navegador');
+    paisCode = detectarRegionPorNavegador();
+  }
+  
+  // 4. Último fallback: Colombia
+  if (!paisCode) {
+    console.log('⚠️ No se pudo detectar región, usando fallback: Colombia');
+    paisCode = 'CO';
+  }
+  
+  // 5. Obtener región desde país
+  const { regionKey, regionData } = detectarRegionPorPais(paisCode);
+  
+  // 6. Guardar en caché
+  setCachedRegion(regionKey, regionData, paisCode);
+  
+  return { regionKey, regionData, paisCode };
+};
+
+// Función para forzar re-detección (útil si el usuario viaja)
+export const forzarRedeteccionRegion = async () => {
+  localStorage.removeItem(REGION_CACHE_KEY);
+  localStorage.removeItem(REGION_CACHE_TIME_KEY);
+  return await detectarRegionPorIP();
+};
+
+// Detectar región por código de país (sincrónico)
 const detectarRegionPorPais = (paisCode) => {
   if (!paisCode) return { regionKey: 'DEFAULT', regionData: REGIONES.DEFAULT };
   
@@ -218,17 +390,69 @@ const detectarRegionPorPais = (paisCode) => {
   return { regionKey: 'DEFAULT', regionData: REGIONES.DEFAULT };
 };
 
-const detectarRegionPorIP = async () => {
-  try {
-    const respuesta = await fetch('https://ipwhois.app/json/');
-    if (!respuesta.ok) throw new Error('IP detection failed');
-    const datos = await respuesta.json();
-    return detectarRegionPorPais(datos.country_code);
-  } catch (error) {
-    const paisGuardado = localStorage.getItem('stratium_pais');
-    if (paisGuardado) return detectarRegionPorPais(paisGuardado);
-    return { regionKey: 'DEFAULT', regionData: REGIONES.DEFAULT };
-  }
+// ============================================================
+// FUNCIONES DE COMPATIBILIDAD CON SISTEMA REGIONAL (NUEVAS)
+// ============================================================
+/**
+ * Convierte la configuración regional de formatMoneyUniversal/regional.js
+ * al formato interno de useAuditEngine
+ */
+export const mapRegionalToAuditConfig = (configRegional, usuarioConfig = {}) => {
+  const paisARegion = {
+    // América del Sur
+    'CO': 'AMERICA_SUR', 'AR': 'AMERICA_SUR', 'BR': 'AMERICA_SUR',
+    'CL': 'AMERICA_SUR', 'PE': 'AMERICA_SUR', 'UY': 'AMERICA_SUR',
+    'PY': 'AMERICA_SUR', 'BO': 'AMERICA_SUR', 'EC': 'AMERICA_SUR', 'VE': 'AMERICA_SUR',
+    // Centroamérica
+    'MX': 'CENTROAMERICA_CARIBE', 'PA': 'CENTROAMERICA_CARIBE',
+    'CR': 'CENTROAMERICA_CARIBE', 'GT': 'CENTROAMERICA_CARIBE',
+    'DO': 'CENTROAMERICA_CARIBE', 'PR': 'CENTROAMERICA_CARIBE',
+    // Norteamérica
+    'US': 'NORTEAMERICA', 'CA': 'NORTEAMERICA',
+    // Europa
+    'ES': 'EUROPA', 'FR': 'EUROPA', 'DE': 'EUROPA', 'IT': 'EUROPA',
+    'UK': 'EUROPA', 'GB': 'EUROPA', 'PT': 'EUROPA', 'NL': 'EUROPA',
+    'BE': 'EUROPA', 'SE': 'EUROPA', 'NO': 'EUROPA', 'DK': 'EUROPA',
+    'FI': 'EUROPA', 'IE': 'EUROPA', 'AT': 'EUROPA', 'CH': 'EUROPA'
+  };
+
+  const regionInterna = paisARegion[configRegional.codigo] || 'DEFAULT';
+  const comisionesPorRegion = {
+    'AMERICA_SUR': { MERCADO_LIBRE: 0.20, SHOPIFY: 0.029, AMAZON: 0.15, PROPIA: 0 },
+    'CENTROAMERICA_CARIBE': { MERCADO_LIBRE: 0.18, SHOPIFY: 0.029, AMAZON: 0.15, PROPIA: 0 },
+    'NORTEAMERICA': { MERCADO_LIBRE: 0.18, SHOPIFY: 0.029, AMAZON: 0.15, PROPIA: 0 },
+    'EUROPA': { MERCADO_LIBRE: 0.15, SHOPIFY: 0.029, AMAZON: 0.15, PROPIA: 0 },
+    'DEFAULT': { MERCADO_LIBRE: 0.18, SHOPIFY: 0.029, AMAZON: 0.15, PROPIA: 0 }
+  };
+  
+  const comisiones = comisionesPorRegion[regionInterna] || comisionesPorRegion.DEFAULT;
+  const plataformaUsuario = usuarioConfig.plataforma || 'MERCADO_LIBRE';
+  
+  return {
+    region: regionInterna,
+    moneda: configRegional.moneda,
+    factorPrestacional: configRegional.factorPrestacional,
+    impuestoVentas: configRegional.impuesto || 0.19,
+    plataforma: plataformaUsuario,
+    comisionCanal: comisiones[plataformaUsuario] || 0.18,
+    gastosFijosMensuales: usuarioConfig.gastosFijosMensuales || 0,
+    valorHoraLaboral: usuarioConfig.valorHoraLaboral,
+    tieneConfiguracionRegional: true
+  };
+};
+
+/**
+ * Inyecta configuración regional en los datos de auditoría
+ */
+export const applyRegionalConfig = (datosAuditoria, configRegional) => {
+  return {
+    ...datosAuditoria,
+    _comisionRegional: configRegional.comisionPersonalizada,
+    _impuestoRegional: configRegional.impuestoPersonalizado,
+    _factorPrestacionalRegional: configRegional.factorPrestacional,
+    _monedaRegional: configRegional.moneda,
+    _paisRegional: configRegional.codigo
+  };
 };
 
 // ============================================================
@@ -243,10 +467,10 @@ export const useAuditEngine = (usuarioActual) => {
   // Detectar región al montar
   useEffect(() => {
     const detectar = async () => {
-      const { regionKey, regionData } = await detectarRegionPorIP();
-      setRegionDetectada({ regionKey, regionData });
-      if (regionData.paises[0]) {
-        localStorage.setItem('stratium_pais', regionData.paises[0]);
+      const { regionKey, regionData, paisCode } = await detectarRegionPorIP();
+      setRegionDetectada({ regionKey, regionData, paisCode });
+      if (paisCode) {
+        localStorage.setItem('stratium_pais', paisCode);
       }
     };
     detectar();
@@ -309,10 +533,27 @@ export const useAuditEngine = (usuarioActual) => {
   }, [usuarioActual?.uid, regionDetectada]);
 
   // ============================================================
-  // FUNCIÓN PRINCIPAL DE AUDITORÍA (v2.2-PRO - CORREGIDO)
+  // FUNCIÓN PRINCIPAL DE AUDITORÍA (v2.4-INTERNATIONAL)
   // ============================================================
   const auditarProduccion = useCallback(async (datosProduccion) => {
     try {
+      // === INYECTAR CONFIGURACIÓN REGIONAL SI VIENE DEL SISTEMA EXTERNO ===
+      let datos = { ...datosProduccion };
+      
+      // Si vienen valores regionales externos, aplicarlos temporalmente
+      if (datosProduccion._comisionRegional) {
+        const tempConfig = {
+          ...configuracion,
+          comisionCanal: datosProduccion._comisionRegional,
+          impuestoVentas: datosProduccion._impuestoRegional,
+          factorPrestacional: datosProduccion._factorPrestacionalRegional,
+          moneda: datosProduccion._monedaRegional
+        };
+        
+        // Usar temporalmente esta configuración para este cálculo
+        Object.assign(configuracion, tempConfig);
+      }
+
       // === VALIDACIONES INICIALES ===
       if (!configuracion) {
         throw new Error('Configuración no cargada');
@@ -334,7 +575,7 @@ export const useAuditEngine = (usuarioActual) => {
         transporteTotal, 
         precioVentaUnitario,
         categoria = 'default'
-      } = datosProduccion;
+      } = datos;
       
       const unidades = validateNumber(unidadesProducidas !== undefined ? unidadesProducidas : 1, 'Unidades producidas', { min: 1, required: false, defaultValue: 1 });
       const precioVenta = validateNumber(precioVentaUnitario !== undefined ? precioVentaUnitario : 0, 'Precio venta', { min: 0.01, required: false, defaultValue: 0 });
@@ -618,7 +859,7 @@ export const useAuditEngine = (usuarioActual) => {
         
         fechaAuditoria: new Date().toISOString(),
         requiereConfiguracion: false,
-        version: '2.2-pro'
+        version: '2.4-international'
       };
       
     } catch (error) {
@@ -647,7 +888,8 @@ export const useAuditEngine = (usuarioActual) => {
       .filter(k => k !== 'DEFAULT')
       .map(k => ({ key: k, nombre: REGIONES[k].nombre })),
     plataformasDisponibles: ['MERCADO_LIBRE', 'SHOPIFY', 'AMAZON', 'PROPIA'],
-    categoriasDisponibles: ['electronica', 'moda', 'hogar', 'default']
+    categoriasDisponibles: ['electronica', 'moda', 'hogar', 'default'],
+    forzarRedeteccionRegion
   };
 };
 

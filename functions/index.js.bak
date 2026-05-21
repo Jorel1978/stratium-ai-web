@@ -1,0 +1,1735 @@
+import { onRequest } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
+import { logger } from 'firebase-functions/v2';
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { ImageAnnotatorClient } from '@google-cloud/vision';
+import { parseString } from 'xml2js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
+import PDFDocument from 'pdfkit';
+
+initializeApp();
+const db = getFirestore();
+
+let visionClientInstance = null;
+const getVisionClient = () => {
+    if (!visionClientInstance) {
+        visionClientInstance = new ImageAnnotatorClient();
+    }
+    return visionClientInstance;
+};
+
+let genAiClientInstance = null;
+const getGenAIClient = () => {
+    if (!genAiClientInstance) {
+        const projectId = process.env.GOOGLE_CLOUD_PROJECT || 'agente-financiero-ia-8548f';
+        const location = 'us-central1';
+        genAiClientInstance = new GoogleGenAI({ vertexai: true, project: projectId, location: location });
+    }
+    return genAiClientInstance;
+};
+
+async function procesarXMLFactura(xmlContent) {
+  return new Promise((resolve, reject) => {
+    parseString(xmlContent, {
+      explicitArray: false,
+      mergeAttrs: true,
+      explicitRoot: false,
+      normalize: true,
+      trim: true,
+      xmlns: true,
+      strict: true
+    }, (err, result) => {
+      if (err) {
+        reject(new Error('Error parseando XML: ' + err.message));
+        return;
+      }
+
+      try {
+        const isAttached = result.AttachedDocument || result['cac:AttachedDocument'];
+        const isInvoice = result.Invoice || result['fe:Invoice'] || result['Invoice'];
+        
+        let dataNode;
+        let isFullInvoice = true;
+
+        if (isInvoice) {
+          dataNode = isInvoice;
+        } else if (isAttached) {
+          dataNode = isAttached;
+          isFullInvoice = false;
+        } else {
+          reject(new Error('No se encontró estructura de factura reconocida'));
+          return;
+        }
+
+        const supplierParty = dataNode.AccountingSupplierParty || dataNode['cac:AccountingSupplierParty'] || dataNode.SenderParty || dataNode['cac:SenderParty'];
+        const party = supplierParty?.Party || supplierParty?.['cac:Party'];
+        const partyTaxScheme = party?.PartyTaxScheme || party?.['cac:PartyTaxScheme'];
+        
+        const registrationName = party?.PartyLegalEntity?.RegistrationName || 
+                                 party?.['cac:PartyLegalEntity']?.['cbc:RegistrationName'] ||
+                                 partyTaxScheme?.RegistrationName ||
+                                 partyTaxScheme?.['cbc:RegistrationName'];
+
+        const companyId = party?.PartyIdentification?.ID || 
+                          party?.['cac:PartyIdentification']?.['cbc:ID'] ||
+                          partyTaxScheme?.CompanyID ||
+                          partyTaxScheme?.['cbc:CompanyID'];
+
+        const issueDate = dataNode.IssueDate || dataNode['cbc:IssueDate'];
+        
+        const legalTotal = dataNode.LegalMonetaryTotal || dataNode['cac:LegalMonetaryTotal'];
+        const totalFactura = parseFloat(
+          legalTotal?.TaxInclusiveAmount || 
+          legalTotal?.['cbc:TaxInclusiveAmount'] || 
+          dataNode.ParentDocumentID ||
+          0
+        );
+
+        const productos = [];
+        let sumaProductos = 0;
+        const invoiceLines = dataNode.InvoiceLine || dataNode['cac:InvoiceLine'];
+        const lineas = Array.isArray(invoiceLines) ? invoiceLines : (invoiceLines ? [invoiceLines] : []);
+
+        if (lineas.length > 0) {
+          for (const line of lineas) {
+            const item = line.Item || line['cac:Item'];
+            const nombre = item?.Name || item?.['cbc:Name'] || 'Producto';
+            const quantity = parseFloat(line.InvoicedQuantity || line['cbc:InvoicedQuantity'] || 1);
+            const lineExtension = parseFloat(line.LineExtensionAmount || line['cbc:LineExtensionAmount'] || 0);
+            
+            const precioUnitario = lineExtension / quantity;
+            sumaProductos += lineExtension;
+
+            productos.push({
+              nombre: String(nombre).substring(0, 80),
+              cantidad: Math.round(quantity),
+              precioUnitario: Math.round(precioUnitario * 100) / 100
+            });
+          }
+        } else if (!isFullInvoice) {
+          productos.push({
+            nombre: "RESUMEN DE COMPRA (CONTENEDOR DIAN)",
+            cantidad: 1,
+            precioUnitario: totalFactura
+          });
+          sumaProductos = totalFactura;
+        }
+
+        let ivaTotal = 0;
+        const taxTotal = dataNode.TaxTotal || dataNode['cac:TaxTotal'];
+        if (taxTotal) {
+          const taxAmount = taxTotal.TaxAmount || taxTotal['cbc:TaxAmount'];
+          ivaTotal = parseFloat(taxAmount || 0);
+        }
+
+        resolve({
+          proveedor: registrationName || 'Proveedor DIAN',
+          idFiscal: companyId || '',
+          fecha: issueDate || new Date().toISOString().split('T')[0],
+          total: Math.round(totalFactura * 100) / 100,
+          impuestos: Math.round(ivaTotal * 100) / 100,
+          productos,
+          sumaProductos: Math.round(sumaProductos * 100) / 100,
+          integridadValida: true,
+          diferenciaPorcentaje: 0,
+          rawXML: xmlContent.substring(0, 200)
+        });
+
+      } catch (extractError) {
+        reject(new Error('Error en mapeo DIAN: ' + extractError.message));
+      }
+    });
+  });
+}
+
+function detectarRegion(texto, moneda = 'COP') {
+    const regiones = {
+        colombia: { pais: 'Colombia', nombre: 'LatAm', separadorDecimal: ',', separadorMiles: '.', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['NIT', 'N.I.T', 'RUT'], impuestos: ['IVA', 'IMPUESTO'], monedaSimbolo: ['$', 'COP'], porcentajeImpuesto: 19 },
+        mexico: { pais: 'México', nombre: 'LatAm', separadorDecimal: '.', separadorMiles: ',', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['RFC', 'CURP', 'NIT'], impuestos: ['IVA', 'ISR', 'IEPS'], monedaSimbolo: ['$', 'MXN'], porcentajeImpuesto: 16 },
+        argentina: { pais: 'Argentina', nombre: 'LatAm', separadorDecimal: ',', separadorMiles: '.', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['CUIT', 'CUIL', 'NIT'], impuestos: ['IVA', 'PAIS'], monedaSimbolo: ['$', 'ARS'], porcentajeImpuesto: 21 },
+        chile: { pais: 'Chile', nombre: 'LatAm', separadorDecimal: ',', separadorMiles: '.', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['RUT', 'RUN'], impuestos: ['IVA'], monedaSimbolo: ['$', 'CLP'], porcentajeImpuesto: 19 },
+        peru: { pais: 'Perú', nombre: 'LatAm', separadorDecimal: '.', separadorMiles: ',', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['RUC', 'DNI'], impuestos: ['IGV', 'ISC'], monedaSimbolo: ['S/', 'PEN'], porcentajeImpuesto: 18 },
+        usa: { pais: 'EE.UU.', nombre: 'USA', separadorDecimal: '.', separadorMiles: ',', formatoFecha: 'MM/DD/YYYY', idsFiscales: ['EIN', 'TAX ID', 'SSN', 'VAT ID'], impuestos: ['SALES TAX', 'TAX', 'GST'], monedaSimbolo: ['$', 'USD', 'US$'], porcentajeImpuesto: 0 },
+        espana: { pais: 'España', nombre: 'Europa', separadorDecimal: ',', separadorMiles: '.', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['CIF', 'NIF', 'NIE', 'VAT'], impuestos: ['IVA', 'IGIC'], monedaSimbolo: ['€', 'EUR'], porcentajeImpuesto: 21 },
+        reinoUnido: { pais: 'Reino Unido', nombre: 'Europa', separadorDecimal: '.', separadorMiles: ',', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['VAT', 'UTR', 'NINO'], impuestos: ['VAT'], monedaSimbolo: ['£', 'GBP'], porcentajeImpuesto: 20 },
+        alemania: { pais: 'Alemania', nombre: 'Europa', separadorDecimal: ',', separadorMiles: '.', formatoFecha: 'DD.MM.YYYY', idsFiscales: ['USt-IdNr', 'Steuernummer'], impuestos: ['MwSt', 'Umsatzsteuer', 'VAT'], monedaSimbolo: ['€', 'EUR'], porcentajeImpuesto: 19 },
+        francia: { pais: 'Francia', nombre: 'Europa', separadorDecimal: ',', separadorMiles: ' ', formatoFecha: 'DD/MM/YYYY', idsFiscales: ['SIRET', 'SIREN', 'TVA'], impuestos: ['TVA'], monedaSimbolo: ['€', 'EUR'], porcentajeImpuesto: 20 }
+    };
+
+    for (const [key, region] of Object.entries(regiones)) {
+        for (const simbolo of region.monedaSimbolo) {
+            if (moneda.toUpperCase().includes(simbolo) || texto.includes(simbolo)) {
+                return { ...region, id: key };
+            }
+        }
+    }
+
+    for (const [key, region] of Object.entries(regiones)) {
+        for (const idFiscal of region.idsFiscales) {
+            if (texto.match(new RegExp(`\\b${idFiscal}\\b`, 'i'))) {
+                return { ...region, id: key };
+            }
+        }
+    }
+
+    if (texto.includes('€')) return { ...regiones.espana, id: 'espana' };
+    if (texto.includes('£')) return { ...regiones.reinoUnido, id: 'reinoUnido' };
+    if (texto.includes('S/')) return { ...regiones.peru, id: 'peru' };
+    
+    if (texto.match(/\d{2}\/\d{2}\/\d{4}/)) {
+        const fecha = texto.match(/\d{2}\/\d{2}\/\d{4}/)[0];
+        const [primero, segundo] = fecha.split('/');
+        if (parseInt(primero) > 12) return { ...regiones.colombia, id: 'colombia' };
+        if (parseInt(segundo) > 12) return { ...regiones.usa, id: 'usa' };
+    }
+
+    return { ...regiones.colombia, id: 'colombia' };
+}
+
+function analizarFormatoNumero(str) {
+    if (!str) return { valor: 0, separadorDecimal: null, separadorMiles: null };
+    
+    const limpio = str.toString().trim();
+    const tieneComa = limpio.includes(',');
+    const tienePunto = limpio.includes('.');
+    const ultimoSeparador = limpio.match(/[.,][0-9]{1,2}$/);
+    
+    if (tienePunto && tieneComa && ultimoSeparador?.includes(',')) {
+        const numero = limpio.replace(/\./g, '').replace(',', '.');
+        return { valor: parseFloat(numero), separadorDecimal: ',', separadorMiles: '.' };
+    }
+    if (tienePunto && tieneComa && ultimoSeparador?.includes('.')) {
+        const numero = limpio.replace(/,/g, '');
+        return { valor: parseFloat(numero), separadorDecimal: '.', separadorMiles: ',' };
+    }
+    if (tieneComa && !tienePunto) {
+        if (limpio.match(/,[0-9]{2}$/)) {
+            return { valor: parseFloat(limpio.replace(',', '.')), separadorDecimal: ',', separadorMiles: null };
+        }
+        return { valor: parseInt(limpio.replace(/,/g, '')), separadorDecimal: null, separadorMiles: ',' };
+    }
+    if (tienePunto && !tieneComa) {
+        if (limpio.match(/\.[0-9]{2}$/)) {
+            return { valor: parseFloat(limpio), separadorDecimal: '.', separadorMiles: null };
+        }
+        return { valor: parseInt(limpio.replace(/\./g, '')), separadorDecimal: null, separadorMiles: '.' };
+    }
+    return { valor: parseFloat(limpio) || 0, separadorDecimal: null, separadorMiles: null };
+}
+
+function convertirNumeroUniversal(str) {
+    if (!str) return 0;
+    if (typeof str === 'number') return str;
+    const { valor } = analizarFormatoNumero(str);
+    return valor;
+}
+
+function limpiarNumero(valor) {
+    if (!valor) return 0;
+    if (typeof valor === 'number') return valor;
+    const limpio = String(valor).replace(/[^\d.,-]/g, '').replace(',', '.');
+    const num = parseFloat(limpio);
+    return isNaN(num) ? 0 : num;
+}
+
+function formatearMoneda(valor, moneda = 'COP') {
+    return new Intl.NumberFormat('es-CO', { 
+        style: 'currency', 
+        currency: moneda, 
+        minimumFractionDigits: 0 
+    }).format(valor);
+}
+
+function extraerProveedor(texto) {
+    const lineas = texto.split('\n');
+    const patrones = [
+        /(?:PROVEEDOR|SUPPLIER|SELLER|VENDOR|MERCHANT|COMPANY|EMPRESA)[:\s]*([^\n]{3,60})/i,
+        /(?:FACTURA|INVOICE|FROM|BILLED TO)[:\s]*([A-ZÁÉÍÓÚÑa-z\s\.\-\,]{3,60})/i,
+        /^([A-ZÁÉÍÓÚÑ]{2,}[A-ZÁÉÍÓÚÑa-z\s\.\-\,]{5,50})$/m
+    ];
+    for (const patron of patrones) {
+        const match = texto.match(patron);
+        if (match && match[1] && match[1].length > 3 && match[1].length < 60) {
+            return match[1].trim().replace(/[^\w\sÁÉÍÓÚÑáéíóúñ\.\-\,]/g, '').trim();
+        }
+    }
+    for (const linea of lineas) {
+        const lineaTrim = linea.trim();
+        if (lineaTrim.length > 5 && lineaTrim.length < 60 &&
+            !lineaTrim.match(/\d{2}[-/]\d{2}[-/]\d{2,4}/) &&
+            !lineaTrim.match(/NIT|RFC|RUT|CIF|NIF|TAX|VAT|ID/i) &&
+            !lineaTrim.match(/TOTAL|SUBTOTAL|INVOICE|FACTURA/i)) {
+            return lineaTrim;
+        }
+    }
+    return 'Proveedor no identificado';
+}
+
+function extraerIdFiscal(texto, region) {
+    const patronesPorRegion = {
+        colombia: /(?:NIT|N\.I\.T|RUT)[:\s]*([0-9]{3}[\.\s]?[0-9]{3}[\.\s]?[0-9]{3}[-]?[0-9]{1})/i,
+        mexico: /(?:RFC)[:\s]*([A-Z]{3,4}[0-9]{6}[A-Z0-9]{3})/i,
+        argentina: /(?:CUIT)[:\s]*([0-9]{2}[-]?[0-9]{8}[-]?[0-9]{1})/i,
+        chile: /(?:RUT)[:\s]*([0-9]{1,2}[\.]?[0-9]{3}[\.]?[0-9]{3}[-]?[0-9Kk]{1})/i,
+        peru: /(?:RUC)[:\s]*([0-9]{11})/i,
+        usa: /(?:EIN|TAX\s*ID)[:\s]*([0-9]{2}[-]?[0-9]{7})/i,
+        espana: /(?:CIF|NIF)[:\s]*([A-Z]{1}[0-9]{8})/i,
+        reinoUnido: /(?:VAT|VAT\s*ID)[:\s]*([A-Z0-9]{9})/i,
+        alemania: /(?:USt-IdNr|Steuernummer)[:\s]*([0-9]{1,2}[\/\s]?[0-9]{3}[\/\s]?[0-9]{4})/i,
+        francia: /(?:SIRET|SIREN)[:\s]*([0-9]{3,14})/i
+    };
+    const patronRegion = patronesPorRegion[region.id];
+    if (patronRegion) {
+        const match = texto.match(patronRegion);
+        if (match) return match[1].replace(/[\.\s\-]/g, '');
+    }
+    const patronesGenerales = [
+        /(?:ID|TAX\s*ID|VAT\s*ID)[:\s]*([A-Z0-9\-]{6,20})/i,
+        /(?:REGISTRO|REGISTRATION)[:\s]*([A-Z0-9\-]{6,20})/i,
+        /([A-Z0-9]{6,20})/
+    ];
+    for (const patron of patronesGenerales) {
+        const match = texto.match(patron);
+        if (match && match[1] && match[1].length > 5) {
+            return match[1].trim();
+        }
+    }
+    return '';
+}
+
+function normalizarFecha(texto) {
+    const formatos = [
+        { regex: /(\d{2})[-/\.](\d{2})[-/\.](\d{4})/, orden: ['dia', 'mes', 'año'] },
+        { regex: /(\d{2})[-/\.](\d{2})[-/\.](\d{4})/, orden: ['mes', 'dia', 'año'] },
+        { regex: /(\d{4})-(\d{2})-(\d{2})/, orden: ['año', 'mes', 'dia'] }
+    ];
+    let matchFecha = texto.match(/(?:FECHA|DATE)[:\s]*(\d{2,4}[-/\.]\d{2}[-/\.]\d{2,4})/i);
+    if (!matchFecha) {
+        matchFecha = texto.match(/(\d{2,4}[-/\.]\d{2}[-/\.]\d{2,4})/);
+    }
+    if (matchFecha) {
+        const fechaStr = matchFecha[1];
+        for (const formato of formatos) {
+            const match = fechaStr.match(formato.regex);
+            if (match) {
+                let dia, mes, ano;
+                if (formato.orden[0] === 'dia') { dia = match[1]; mes = match[2]; ano = match[3]; }
+                else if (formato.orden[0] === 'mes') { mes = match[1]; dia = match[2]; ano = match[3]; }
+                else { ano = match[1]; mes = match[2]; dia = match[3]; }
+                if (parseInt(dia) <= 31 && parseInt(mes) <= 12 && parseInt(ano) > 1900) {
+                    return `${ano}-${mes}-${dia}`;
+                }
+            }
+        }
+    }
+    return new Date().toISOString().split('T')[0];
+}
+
+function extraerTotal(texto) {
+    const palabrasTotal = ['TOTAL', 'SUBTOTAL', 'SUM', 'TOTAL A PAGAR', 'TOTAL TO PAY', 'AMOUNT DUE', 'BALANCE DUE', 'GRAND TOTAL', 'NET TOTAL', 'TOTAL PAGAR', 'VALOR TOTAL', 'TOTAL VENTA', 'TOTAL INVOICE'];
+    const regexTotal = new RegExp(`(?:${palabrasTotal.join('|')})[:\s]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)`, 'i');
+    const match = texto.match(regexTotal);
+    if (match) {
+        let numeroLimpio = match[1].replace(/\s(?=\d)/g, '');
+        const valor = convertirNumeroUniversal(numeroLimpio);
+        if (valor > 0) return valor;
+    }
+    const numeros = [];
+    const regexNumero = /([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)/g;
+    let matchNumero;
+    while ((matchNumero = regexNumero.exec(texto)) !== null) {
+        let numeroLimpio = matchNumero[1].replace(/\s(?=\d)/g, '');
+        const valor = convertirNumeroUniversal(numeroLimpio);
+        if (valor > 100) numeros.push(valor);
+    }
+    if (numeros.length > 0) {
+        numeros.sort((a, b) => b - a);
+        return numeros[0];
+    }
+    return 0;
+}
+
+function extraerImpuestos(texto, total, region) {
+    const palabrasImpuesto = ['IVA', 'VAT', 'SALES TAX', 'GST', 'IMPUESTO', 'TAX', 'TVA', 'MWST', 'UMSATZSTEUER', 'PAIS', 'IGIC', 'IGV', 'ISC'];
+    const regexImpuesto = new RegExp(`(?:${palabrasImpuesto.join('|')})[:\s]*([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?)`, 'i');
+    const match = texto.match(regexImpuesto);
+    if (match) {
+        let numeroLimpio = match[1].replace(/\s(?=\d)/g, '');
+        const valor = convertirNumeroUniversal(numeroLimpio);
+        if (valor > 0 && valor < total) return valor;
+    }
+    const regexPorcentaje = new RegExp(`(?:${palabrasImpuesto.join('|')})\\s*([0-9]{1,2})%`, 'i');
+    const matchPorc = texto.match(regexPorcentaje);
+    if (matchPorc && total > 0) {
+        const porcentaje = parseInt(matchPorc[1]);
+        return Math.round((total * porcentaje / 100) * 100) / 100;
+    }
+    if (total > 0 && region.porcentajeImpuesto > 0) {
+        return Math.round((total - (total / (1 + region.porcentajeImpuesto / 100))) * 100) / 100;
+    }
+    return 0;
+}
+
+function extraerProductosPorCoordenadas(texto, palabrasConCoordenadas) {
+    const productos = [];
+    const productosVistos = new Set();
+    const palabrasPorFila = {};
+    
+    for (const palabra of palabrasConCoordenadas) {
+        if (!palabra.description || !palabra.boundingPoly?.vertices) continue;
+        const y = palabra.boundingPoly.vertices[0].y;
+        const fila = Math.round(y / 15);
+        if (!palabrasPorFila[fila]) palabrasPorFila[fila] = [];
+        palabrasPorFila[fila].push({ texto: palabra.description, x: palabra.boundingPoly.vertices[0].x });
+    }
+    
+    for (const fila of Object.values(palabrasPorFila)) {
+        fila.sort((a, b) => a.x - b.x);
+        let descripcion = '';
+        let precio = null;
+        let descripcionInicio = -1;
+        
+        for (let i = 0; i < fila.length; i++) {
+            let numeroLimpio = fila[i].texto.replace(/\s(?=\d)/g, '');
+            const posiblePrecio = convertirNumeroUniversal(numeroLimpio);
+            if (posiblePrecio > 0) {
+                precio = posiblePrecio;
+                descripcionInicio = i;
+                break;
+            }
+        }
+        
+        if (precio && precio > 100 && precio < 10000000) {
+            for (let j = 0; j < descripcionInicio; j++) descripcion += fila[j].texto + ' ';
+            descripcion = descripcion.trim();
+            if (descripcion.length > 5 && descripcion.length < 100 && !descripcion.match(/TOTAL|SUBTOTAL|IVA|IMPUESTO|FECHA|NIT/i)) {
+                const clave = `${descripcion.toLowerCase()}|${precio}`;
+                if (!productosVistos.has(clave) && !descripcion.toLowerCase().includes('total')) {
+                    productosVistos.add(clave);
+                    let cantidad = 1;
+                    const cantidadMatch = descripcion.match(/^(\d+)\s+/);
+                    if (cantidadMatch) {
+                        cantidad = parseInt(cantidadMatch[1]);
+                        descripcion = descripcion.replace(/^\d+\s+/, '');
+                    }
+                    productos.push({ nombre: descripcion.substring(0, 80), cantidad, precioUnitario: Math.round(precio * 100) / 100 });
+                }
+            }
+        }
+    }
+    
+    if (productos.length === 0) return extraerProductosPorTextoPlano(texto);
+    return productos.slice(0, 100);
+}
+
+function extraerProductosPorTextoPlano(texto) {
+    const lineas = texto.split('\n');
+    const productos = [];
+    const productosVistos = new Set();
+    const patrones = [
+        /^(\d+)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s\/\-\.]{5,80}?)\s+([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)$/,
+        /^([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s\/\-\.]{5,80}?)\s+([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{2})?)$/
+    ];
+    
+    for (const linea of lineas) {
+        if (linea.length < 15) continue;
+        if (/^(FECHA|DATE|TOTAL|SUBTOTAL|IVA|NIT|RFC|RUT|TAX|PAG|EFECTIVO|CAMBIO)/i.test(linea)) continue;
+        
+        for (const patron of patrones) {
+            const match = linea.match(patron);
+            if (match) {
+                const cantidad = match[1] && !isNaN(parseInt(match[1])) ? parseInt(match[1]) : 1;
+                const nombre = cantidad > 1 ? match[2] || '' : match[1] || '';
+                const precioStr = match[match.length - 1];
+                let numeroLimpio = precioStr.replace(/\s(?=\d)/g, '');
+                const precio = convertirNumeroUniversal(numeroLimpio);
+                if (nombre && nombre.length > 3 && precio > 100 && precio < 10000000) {
+                    const clave = `${nombre.toLowerCase()}|${precio}`;
+                    if (!productosVistos.has(clave)) {
+                        productosVistos.add(clave);
+                        productos.push({ nombre: nombre.substring(0, 80), cantidad, precioUnitario: Math.round(precio * 100) / 100 });
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    return productos.slice(0, 100);
+}
+
+async function obtenerDatosFinancieros(userId) {
+    const movimientosRef = db.collection('movimientos');
+    const snapshot = await movimientosRef.where('userId', '==', userId).orderBy('fecha', 'desc').limit(1000).get();
+    
+    const movimientos = snapshot.docs.map(doc => doc.data());
+    const ventas = movimientos.filter(m => m.tipo === 'ingreso');
+    const compras = movimientos.filter(m => m.tipo === 'egreso' && m.categoria === 'INVENTARIO');
+    const gastos = movimientos.filter(m => m.tipo === 'egreso' && m.categoria !== 'INVENTARIO');
+    
+    const ventasTotales = ventas.reduce((s, m) => s + (m.valor || 0), 0);
+    const comprasTotales = compras.reduce((s, m) => s + (m.valor || 0), 0);
+    const gastosTotales = gastos.reduce((s, m) => s + (m.valor || 0), 0);
+    const utilidad = ventasTotales - comprasTotales - gastosTotales;
+    const margen = ventasTotales > 0 ? (utilidad / ventasTotales) * 100 : 0;
+    
+    const flujoCaja = {
+        ingresos_operativos: ventasTotales,
+        egresos_operativos: gastosTotales,
+        flujo_operativo: ventasTotales - gastosTotales,
+        ingresos_inversion: 0,
+        egresos_inversion: comprasTotales,
+        flujo_inversion: -comprasTotales,
+        ingresos_financiamiento: 0,
+        egresos_financiamiento: 0,
+        flujo_financiamiento: 0,
+        saldo_inicial: 0,
+        saldo_final: ventasTotales - comprasTotales - gastosTotales
+    };
+    
+    return {
+        ventas_totales: ventasTotales,
+        costo_ventas: comprasTotales,
+        utilidad_bruta: ventasTotales - comprasTotales,
+        gastos_operativos: gastosTotales,
+        utilidad_neta: utilidad,
+        margen_neto: margen,
+        flujo_caja: flujoCaja
+    };
+}
+
+function limpiar_producto_supportbot(texto_completo) {
+    let texto = texto_completo.toLowerCase().trim();
+    
+    const prefijos = [
+        'venta a credito de', 'venta a crédito de', 'compra a credito de', 
+        'compra a crédito de', 'registra:', 'registra venta', 'registra compra',
+        'venta de', 'compra de', 'anota:', 'nota:', 'para revender', 'revender'
+    ];
+    
+    for (const prefijo of prefijos) {
+        if (texto.startsWith(prefijo)) {
+            texto = texto.slice(prefijo.length).trim();
+        } else {
+            texto = texto.replace(new RegExp('\\b' + prefijo + '\\b', 'g'), '');
+        }
+    }
+    
+    for (const corte of [" por ", " con ", " total ", " valor ", " costo ", " precio ", " a "]) {
+        if (texto.includes(corte)) {
+            texto = texto.split(corte)[0];
+        }
+    }
+    
+    texto = texto.replace(/^\d+\s+(?:unidades?|items?|piezas?|botellas?|cajas?|bolsas?|paquetes?|bultos?)\s*(?:de\s*)?/, '');
+    
+    const stopwords = [
+        'compra', 'venta', 'registra', 'revender', 'marca', 'valor', 
+        'unidades', 'de', 'a', 'la', 'el', 'los', 'por', 'con', 'total', 
+        'costo', 'precio', 'credito', 'crédito', 'stock', 'inventario', 
+        'nos', 'debe', 'plazo', 'días', 'día', 'fiado', 'pendiente', 
+        'para', 'al', 'del', 'se', 'le', 'para revender'
+    ];
+    
+    texto = texto.replace(/\b(para|revender|para revender)\b/g, '');
+    
+    const tokens = texto.split(/\s+/);
+    const productoTokens = [];
+    
+    for (const tok of tokens) {
+        if (/^\d+$/.test(tok)) continue;
+        if (stopwords.includes(tok)) continue;
+        productoTokens.push(tok);
+    }
+    
+    const nombre = productoTokens.join(' ').trim();
+    
+    if (!nombre) return "Producto";
+    
+    return nombre.split(' ').map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+}
+
+function extraer_tercero(mensaje_original) {
+    const patrones = [
+        /\bse\s+le\s+debe\s+a\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/,
+        /\bdebe\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/,
+        /\ba\s+la\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/,
+        /\ba\s+el\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/,
+        /\bal\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/,
+        /\ba\s+([A-Za-zÁÉÍÓÚÑáéíóúñ\s]+?)(?=\s*(?:\d|\.|$))/
+    ];
+    
+    for (const patron of patrones) {
+        const match = mensaje_original.match(patron);
+        if (match) {
+            let tercero = match[1].trim();
+            const palabrasGenericas = ['distribuidora', 'distribuidor', 'empresa', 'proveedor', 'cliente', 'tienda', 'almacen', 'almacén'];
+            for (const palabra of palabrasGenericas) {
+                tercero = tercero.replace(new RegExp('\\b' + palabra + '\\b', 'gi'), '');
+            }
+            tercero = tercero.replace(/\s+/g, ' ').trim();
+            return tercero ? tercero.split(' ').map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ') : "General";
+        }
+    }
+    
+    return "General";
+}
+
+function detectar_estado(mensaje_original) {
+    const palabras_credito = ['crédito', 'credito', 'fiado', 'pendiente', 'debo', 'debe', 'se le debe'];
+    if (palabras_credito.some(p => mensaje_original.toLowerCase().includes(p))) {
+        return "PENDIENTE";
+    }
+    return "PAGADO";
+}
+
+function limpiar_numero_supportbot(valor) {
+    if (valor === undefined || valor === null) return 0;
+    if (typeof valor === 'number') return valor;
+    if (typeof valor === 'string') {
+        const limpio = valor.replace(/[^\d.,-]/g, '').replace(',', '.');
+        const num = parseFloat(limpio);
+        return isNaN(num) ? 0 : num;
+    }
+    return 0;
+}
+
+async function registrar_compra_en_firestore(datos) {
+    try {
+        const concepto_original = datos.concepto || "Producto";
+        const concepto_limpio = limpiar_producto_supportbot(concepto_original);
+        
+        let cantidad = 1, valor_unitario = 0, iva_item = 0, total_item = 0;
+        
+        if (datos.valor_unitario_base !== undefined) {
+            cantidad = parseFloat(datos.cantidad || 1);
+            valor_unitario = parseFloat(datos.valor_unitario_base || 0);
+            iva_item = parseFloat(datos.iva_item || 0);
+            total_item = (valor_unitario * cantidad) + iva_item;
+        } else if (datos.total_item !== undefined) {
+            total_item = parseFloat(datos.total_item || 0);
+            cantidad = parseFloat(datos.cantidad || 1);
+            if (cantidad > 0) {
+                iva_item = parseFloat(datos.iva_item || 0);
+                valor_unitario = (total_item - iva_item) / cantidad;
+            }
+        }
+        
+        const fecha_registro = datos.fecha || new Date().toLocaleDateString('es-CO');
+        const factura = datos.factura || "S/N";
+        const estado = datos.estado || "PAGADO";
+        const metodo_pago = estado === "PENDIENTE" ? "CRÉDITO" : "Efectivo";
+        const tercero = datos.tercero || "Proveedor General";
+        const flujo = datos.flujo || "INVENTARIO";
+        
+        const userId = "supportbot_default";
+        
+        const registrosRef = db.collection('registros');
+        const q = await registrosRef.where('concepto', '==', concepto_limpio).where('userId', '==', userId).get();
+        
+        if (!q.empty) {
+            const doc = q.docs[0];
+            const data = doc.data();
+            const cantidad_actual = data.cantidad || 0;
+            const total_actual = data.total || 0;
+            const costo_actual = data.valorUnitario || 0;
+            
+            const nueva_cantidad = cantidad_actual + cantidad;
+            const nuevo_costo = ((cantidad_actual * costo_actual) + (cantidad * valor_unitario)) / nueva_cantidad;
+            const nuevo_total = total_actual + total_item;
+            
+            let facturas_actual = data.facturas || "S/N";
+            let nuevas_facturas = factura !== "S/N" && facturas_actual !== "S/N" ? `${facturas_actual}, ${factura}` : (factura !== "S/N" ? factura : facturas_actual);
+            
+            await doc.ref.update({
+                cantidad: nueva_cantidad,
+                valorUnitario: nuevo_costo,
+                total: nuevo_total,
+                facturas: nuevas_facturas,
+                tercero: tercero,
+                estado: estado,
+                flujo: flujo,
+                ultimaFecha: fecha_registro,
+                metodoPago: metodo_pago,
+                actualizadoEn: new Date().toISOString()
+            });
+            
+            const mensaje = `Registrado en Firestore (ACTUALIZADO): ${Math.floor(nueva_cantidad)} ${concepto_limpio} - Costo promedio: $${nuevo_costo.toFixed(2)} - Total acumulado: $${nuevo_total.toFixed(2)}`;
+            return [true, mensaje];
+        } else {
+            await registrosRef.add({
+                userId: userId,
+                concepto: concepto_limpio,
+                cantidad: cantidad,
+                valorUnitario: valor_unitario,
+                iva: iva_item,
+                total: total_item,
+                fecha: fecha_registro,
+                factura: factura,
+                tercero: tercero,
+                estado: estado,
+                flujo: flujo,
+                metodoPago: metodo_pago,
+                notas: `Factura: ${factura}`,
+                creadoEn: new Date().toISOString()
+            });
+            
+            const mensaje = `Registrado en Firestore (NUEVO): ${Math.floor(cantidad)} ${concepto_limpio} - Total: $${total_item.toFixed(2)}`;
+            return [true, mensaje];
+        }
+    } catch (error) {
+        logger.error('Error en registrar_compra_en_firestore:', error);
+        return [false, `Error al registrar: ${error.message}`];
+    }
+}
+
+async function handle_escaneo_documentos(contenido_limpio, imagen_base64) {
+    logger.log(`Procesando documento: ${contenido_limpio.substring(0, 100)}...`);
+    
+    try {
+        if (!imagen_base64) {
+            return { success: false, message: "No se proporcionó imagen del documento" };
+        }
+        
+        const genAiClient = getGenAIClient();
+        
+        function normalizar_plural(texto) {
+            texto = texto.toLowerCase().trim();
+            if (texto.endsWith('s') && !texto.endsWith('es')) return texto.slice(0, -1);
+            if (texto.endsWith('es')) return texto.slice(0, -2);
+            return texto;
+        }
+        
+        const contenido_lower = contenido_limpio.toLowerCase();
+        const palabras_clave = [];
+        const palabras_clave_normalizadas = [];
+        
+        const patron_producto = contenido_lower.match(/(?:compra|registra)\s+(?:de\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)\s+(?:para|a|por)/);
+        if (patron_producto) {
+            const clave = patron_producto[1].trim();
+            palabras_clave.push(clave);
+            palabras_clave_normalizadas.push(normalizar_plural(clave));
+        }
+        
+        const patron_revender = contenido_lower.match(/para\s+(?:revender|inventario|stock)\s+(?:de\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/);
+        if (patron_revender) {
+            const clave = patron_revender[1].trim();
+            palabras_clave.push(clave);
+            palabras_clave_normalizadas.push(normalizar_plural(clave));
+        }
+        
+        const prompt = `Analiza este documento como un auditor contable internacional. EXTRACCIÓN OBLIGATORIA Y PRECISA:
+- numero_factura: número de la factura (string)
+- proveedor: nombre del proveedor (string)
+- fecha: fecha de la factura en formato DD/MM/YYYY (string)
+- productos: lista de objetos con nombre, cantidad, precio_unitario_neto, impuesto_valor, impuesto_tipo, tasa_impuesto
+- total_neto: suma de precios netos (number)
+- total_impuestos: suma de impuestos (number)
+- total_factura: monto total (number)
+
+REGLAS:
+1. NO SUPONGAS impuestos. EXTRAE el valor exacto.
+2. Si NO hay impuestos, impuesto_valor = 0
+3. SIEMPRE extrae la fecha real de la factura
+4. SIEMPRE extrae el número de factura
+
+Formato JSON:
+{"numero_factura":"F001","proveedor":"Proveedor","fecha":"22/03/2026","productos":[{"nombre":"Aceite","cantidad":10,"precio_unitario_neto":10000,"impuesto_valor":1900,"impuesto_tipo":"IVA","tasa_impuesto":19}],"total_neto":100000,"total_impuestos":19000,"total_factura":119000}`;
+        
+        const response = await genAiClient.models.generateContent({
+            model: 'gemini-1.5-flash-002',
+            contents: [
+                { 
+                    role: 'user', 
+                    parts: [
+                        { text: prompt },
+                        { 
+                            inlineData: { 
+                                mimeType: "image/jpeg", 
+                                data: imagen_base64 
+                            } 
+                        }
+                    ] 
+                }
+            ],
+            config: {
+                temperature: 0.1,
+                maxOutputTokens: 2048,
+            }
+        });
+        
+        const resultado_raw = response.text;
+        
+        if (!resultado_raw) {
+            return { success: false, message: "No se pudo analizar la factura" };
+        }
+        
+        let texto_limpio = resultado_raw.trim();
+        const match_bloque = texto_limpio.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+        if (match_bloque) texto_limpio = match_bloque[1].trim();
+        
+        texto_limpio = texto_limpio.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        const match_json = texto_limpio.match(/\{.*\}/s);
+        if (!match_json) {
+            return { success: false, message: "Formato de factura no reconocido" };
+        }
+        
+        const datos_factura = JSON.parse(match_json[0]);
+        
+        const proveedor = datos_factura.proveedor || "Proveedor General";
+        let fecha_factura = datos_factura.fecha || "";
+        
+        if (!fecha_factura) {
+            const match_fecha = contenido_limpio.match(/\d{2}\/\d{2}\/\d{4}/);
+            if (match_fecha) fecha_factura = match_fecha[0];
+            else fecha_factura = new Date().toLocaleDateString('es-CO');
+        }
+        
+        let factura_num = datos_factura.numero_factura || "S/N";
+        if (factura_num === "None" || factura_num === "null" || factura_num === "") factura_num = "S/N";
+        
+        if (factura_num === "S/N") {
+            const match_num = contenido_limpio.match(/(?:factura|numero|ticket|N°|No\.?|Folio)\s*[:\s]*([A-Z0-9\-]+)/i);
+            if (match_num) factura_num = match_num[1].trim();
+        }
+        
+        const es_credito = contenido_lower.includes('credito') || contenido_lower.includes('crédito') || contenido_lower.includes('fiado');
+        const estado_pago = es_credito ? "PENDIENTE" : "PAGADO";
+        
+        const productos_data = datos_factura.productos || [];
+        const productos_reventa = [];
+        let total_personal_neto = 0, total_personal_impuestos = 0;
+        
+        for (const producto of productos_data) {
+            const nombre_raw = producto.nombre || "Producto";
+            const nombre_limpio = limpiar_producto_supportbot(nombre_raw);
+            const cantidad = parseFloat(producto.cantidad) || 1;
+            let precio_neto = parseFloat(producto.precio_unitario_neto) || 0;
+            let impuesto_valor = parseFloat(producto.impuesto_valor) || 0;
+            
+            const total_neto_producto = precio_neto * cantidad;
+            const total_impuesto_producto = impuesto_valor * cantidad;
+            
+            let es_producto_reventa = false;
+            const nombre_normalizado = normalizar_plural(nombre_limpio.toLowerCase());
+            
+            for (let i = 0; i < palabras_clave.length; i++) {
+                const clave_normalizada = palabras_clave_normalizadas[i];
+                const clave_original = palabras_clave[i];
+                if (clave_normalizada && (clave_normalizada === nombre_normalizado || nombre_normalizado === clave_normalizada ||
+                    clave_original.toLowerCase() === nombre_limpio.toLowerCase() || nombre_limpio.toLowerCase() === clave_original.toLowerCase())) {
+                    es_producto_reventa = true;
+                    break;
+                }
+            }
+            
+            if (!es_producto_reventa && palabras_clave.length === 0 && contenido_lower.includes('revender') && !contenido_lower.includes('personal')) {
+                es_producto_reventa = true;
+            }
+            
+            if (es_producto_reventa) {
+                productos_reventa.push({
+                    concepto: nombre_limpio,
+                    cantidad: cantidad,
+                    valor_unitario_base: precio_neto,
+                    iva_item: total_impuesto_producto,
+                    flujo: "INVENTARIO",
+                    tercero: proveedor,
+                    estado: estado_pago,
+                    factura: factura_num,
+                    fecha: fecha_factura
+                });
+            } else {
+                total_personal_neto += total_neto_producto;
+                total_personal_impuestos += total_impuesto_producto;
+            }
+        }
+        
+        const registros_exitosos = [];
+        for (const datos_registro of productos_reventa) {
+            const [exito, mensaje] = await registrar_compra_en_firestore(datos_registro);
+            if (exito) {
+                registros_exitosos.push(`${Math.floor(datos_registro.cantidad)} ${datos_registro.concepto}`);
+                logger.log(`Registro exitoso: ${mensaje}`);
+            } else {
+                logger.error(`Error en registro: ${mensaje}`);
+            }
+        }
+        
+        const total_personal_final = total_personal_neto + total_personal_impuestos;
+        if (total_personal_final > 0) {
+            const datos_personal = {
+                concepto: "Gasto Personal Consolidado",
+                cantidad: 1,
+                valor_unitario_base: total_personal_final,
+                iva_item: 0,
+                flujo: "EGRESO",
+                tercero: proveedor,
+                estado: "PAGADO",
+                factura: factura_num,
+                fecha: fecha_factura,
+                notas: `Compra personal - Neto: $${total_personal_neto.toFixed(2)}, Impuestos: $${total_personal_impuestos.toFixed(2)}`
+            };
+            
+            const [exito, mensaje] = await registrar_compra_en_firestore(datos_personal);
+            if (exito) {
+                registros_exitosos.push(`Gasto Personal Consolidado ($${total_personal_final.toFixed(2)})`);
+                logger.log(`Registro personal: ${mensaje}`);
+            }
+        }
+        
+        if (registros_exitosos.length > 0) {
+            const resumen = registros_exitosos.join(", ");
+            const estado_str = es_credito ? "A CRÉDITO" : "PAGADO";
+            
+            return {
+                success: true,
+                message: `DOCUMENTO PROCESADO - Factura ${factura_num}\nFecha factura: ${fecha_factura}\nProveedor: ${proveedor}\nRegistros: ${resumen}\nEstado: ${estado_str}`
+            };
+        } else {
+            return { success: false, message: "No se pudo registrar ningún producto de la factura." };
+        }
+        
+    } catch (error) {
+        logger.error('Error en handle_escaneo_documentos:', error);
+        return { success: false, message: `Error al procesar el documento: ${error.message}` };
+    }
+}
+
+const LIMITES_REPORTES = {
+  starter: { completo: false, maxVeces: 1, puedeDescargar: false, secciones: [] },
+  pro: { completo: false, maxVeces: 5, puedeDescargar: true, secciones: ['PYG', 'INVENTARIO', 'VENTAS', 'COMPRAS'] },
+  business: { completo: false, maxVeces: 15, puedeDescargar: true, secciones: ['PYG', 'INVENTARIO', 'VENTAS', 'COMPRAS', 'CARTERA', 'GASTOS', 'FLUJO_CAJA'] },
+  elite: { completo: true, maxVeces: 999999, puedeDescargar: true, secciones: ['TODO'] }
+};
+
+async function obtenerContadorReportes(userId) {
+  const docRef = db.collection('reportesContador').doc(userId);
+  const doc = await docRef.get();
+  const mesActual = new Date().toISOString().slice(0, 7);
+  
+  if (!doc.exists) {
+    return 0;
+  }
+  
+  const data = doc.data();
+  if (data.mes !== mesActual) {
+    await docRef.set({ mes: mesActual, contador: 0 });
+    return 0;
+  }
+  
+  return data.contador || 0;
+}
+
+async function incrementarContadorReportes(userId) {
+  const docRef = db.collection('reportesContador').doc(userId);
+  const mesActual = new Date().toISOString().slice(0, 7);
+  
+  await docRef.set({
+    mes: mesActual,
+    contador: admin.firestore.FieldValue.increment(1)
+  }, { merge: true });
+}
+
+async function verificarPrimerReporte(userId) {
+  const docRef = db.collection('reportesPrimerUso').doc(userId);
+  const doc = await docRef.get();
+  return doc.exists && doc.data().usado === true;
+}
+
+async function marcarPrimerReporteUsado(userId) {
+  const docRef = db.collection('reportesPrimerUso').doc(userId);
+  await docRef.set({ usado: true, fecha: new Date().toISOString() });
+}
+
+async function generarPDFPorPlan(datos, idioma, plan, limite) {
+  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+  const buffers = [];
+  
+  doc.on('data', buffers.push.bind(buffers));
+  doc.on('end', () => {});
+  
+  doc.fontSize(18).font('Helvetica-Bold').text(
+    idioma === 'es' ? 'REPORTE MAESTRO DE AUDITORÍA' : 'MASTER AUDIT REPORT', 
+    { align: 'center' }
+  );
+  doc.moveDown();
+  
+  const esCompleto = limite.completo || plan === 'elite';
+  const secciones = limite.secciones;
+  
+  if (plan !== 'starter') {
+    doc.fontSize(14).font('Helvetica-Bold').text(idioma === 'es' ? '1. ESTADO DE RESULTADOS (PyG)' : '1. INCOME STATEMENT');
+    doc.moveDown(0.5);
+    doc.fontSize(10).font('Helvetica');
+    doc.text(`${idioma === 'es' ? 'Ventas totales:' : 'Total sales:'} $${datos.ventas_totales?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Costo de ventas:' : 'Cost of sales:'} $${datos.costo_ventas?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Utilidad bruta:' : 'Gross profit:'} $${datos.utilidad_bruta?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Gastos operativos:' : 'Operating expenses:'} $${datos.gastos_operativos?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Utilidad neta:' : 'Net profit:'} $${datos.utilidad_neta?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Margen neto:' : 'Net margin:'} ${datos.margen_neto?.toFixed(1) || 0}%`);
+    doc.moveDown();
+  }
+  
+  if (esCompleto || (secciones && secciones.includes('FLUJO_CAJA'))) {
+    doc.addPage();
+    doc.fontSize(14).font('Helvetica-Bold').text(idioma === 'es' ? 'FLUJO DE CAJA' : 'CASH FLOW');
+    doc.moveDown(0.5);
+    doc.fontSize(10).font('Helvetica');
+    doc.text(`${idioma === 'es' ? 'Ingresos operativos:' : 'Operating income:'} $${datos.flujo_caja?.ingresos_operativos?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Egresos operativos:' : 'Operating expenses:'} $${datos.flujo_caja?.egresos_operativos?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Flujo operativo neto:' : 'Net operating cash flow:'} $${datos.flujo_caja?.flujo_operativo?.toLocaleString() || 0}`);
+    doc.moveDown();
+    doc.text(`${idioma === 'es' ? 'Ingresos por inversión:' : 'Investment income:'} $${datos.flujo_caja?.ingresos_inversion?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Egresos por inversión:' : 'Investment expenses:'} $${datos.flujo_caja?.egresos_inversion?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Flujo de inversión neto:' : 'Net investing cash flow:'} $${datos.flujo_caja?.flujo_inversion?.toLocaleString() || 0}`);
+    doc.moveDown();
+    doc.text(`${idioma === 'es' ? 'Ingresos por financiamiento:' : 'Financing income:'} $${datos.flujo_caja?.ingresos_financiamiento?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Egresos por financiamiento:' : 'Financing expenses:'} $${datos.flujo_caja?.egresos_financiamiento?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Flujo de financiamiento neto:' : 'Net financing cash flow:'} $${datos.flujo_caja?.flujo_financiamiento?.toLocaleString() || 0}`);
+    doc.moveDown();
+    doc.text(`${idioma === 'es' ? 'Saldo inicial de caja:' : 'Initial cash balance:'} $${datos.flujo_caja?.saldo_inicial?.toLocaleString() || 0}`);
+    doc.text(`${idioma === 'es' ? 'Saldo final de caja:' : 'Final cash balance:'} $${datos.flujo_caja?.saldo_final?.toLocaleString() || 0}`);
+    doc.moveDown();
+  }
+  
+  doc.end();
+  
+  return Buffer.concat(buffers);
+}
+
+async function generarReporteCompleto(userId, idioma = 'es', plan = 'starter', esPrimerReporteGratis = false) {
+  const limite = LIMITES_REPORTES[plan] || LIMITES_REPORTES.starter;
+  
+  const contador = await obtenerContadorReportes(userId);
+  const yaTuvoPrimerReporte = await verificarPrimerReporte(userId);
+  
+  if (plan === 'starter') {
+    if (yaTuvoPrimerReporte && !esPrimerReporteGratis) {
+      return { 
+        error: true, 
+        mensaje: idioma === 'es' 
+          ? ' Solo tienes derecho a UN reporte de prueba. Actualiza tu plan para más reportes.'
+          : ' You only have ONE trial report. Upgrade your plan for more reports.'
+      };
+    }
+    await marcarPrimerReporteUsado(userId);
+  }
+  
+  if (contador >= limite.maxVeces && plan !== 'elite') {
+    const restantes = limite.maxVeces - contador;
+    return {
+      error: true,
+      mensaje: idioma === 'es'
+        ? ` Has alcanzado el límite de ${limite.maxVeces} reportes este mes. Te quedan ${restantes} reportes.`
+        : ` You have reached your monthly limit of ${limite.maxVeces} reports. ${restantes} remaining.`
+    };
+  }
+  
+  const datos = await obtenerDatosFinancieros(userId);
+  const pdfBuffer = await generarPDFPorPlan(datos, idioma, plan, limite);
+  await incrementarContadorReportes(userId);
+  
+  return { 
+    pdfBuffer, 
+    nombreArchivo: `Reporte_${new Date().toISOString().split('T')[0]}.pdf`,
+    secciones: limite.secciones,
+    plan: plan,
+    datos: datos
+  };
+}
+
+export const procesarFacturaVision = onRequest({ cors: true, timeoutSeconds: 120, memory: '512MiB' }, async (req, res) => {
+  const startTime = Date.now();
+  
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.status(405).json({ 
+      success: false, 
+      mensaje: 'Método no permitido. Use POST.' 
+    });
+    return;
+  }
+
+  try {
+    const { imagen, xmlContent, moneda = 'COP' } = req.body;
+
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+    const MAX_XML_SIZE = 5 * 1024 * 1024;
+    
+    if (imagen && imagen.length > MAX_IMAGE_SIZE) {
+      logger.log(` Imagen rechazada por tamaño: ${imagen.length} bytes`);
+      return res.status(400).json({ 
+        success: false, 
+        mensaje: `Imagen demasiado grande. Máximo ${MAX_IMAGE_SIZE / 1024 / 1024}MB` 
+      });
+    }
+    if (xmlContent && xmlContent.length > MAX_XML_SIZE) {
+      logger.log(` XML rechazado por tamaño: ${xmlContent.length} bytes`);
+      return res.status(400).json({ 
+        success: false, 
+        mensaje: `XML demasiado grande. Máximo ${MAX_XML_SIZE / 1024 / 1024}MB` 
+      });
+    }
+
+    if (xmlContent) {
+      logger.log(' Procesando XML de factura electrónica...');
+      
+      let facturaData;
+      try {
+        facturaData = await procesarXMLFactura(xmlContent);
+      } catch (xmlError) {
+        logger.error('Error parseando XML:', xmlError.message);
+        return res.status(400).json({
+          success: false,
+          mensaje: 'Error procesando el XML: ' + xmlError.message
+        });
+      }
+
+      const respuesta = {
+        success: true,
+        proveedor: facturaData.proveedor,
+        idFiscal: facturaData.idFiscal,
+        fecha: facturaData.fecha,
+        total: facturaData.total,
+        impuestos: facturaData.impuestos,
+        productos: facturaData.productos,
+        region: { pais: 'Colombia', nombre: 'LatAm', impuesto: 'IVA', porcentajeImpuesto: 19 },
+        tipoImpuesto: 'IVA',
+        rawText: facturaData.rawXML?.substring(0, 200) || '',
+        validaciones: {
+          sumaProductos: facturaData.sumaProductos,
+          integridadMatematica: {
+            valida: facturaData.integridadValida,
+            alerta: !facturaData.integridadValida,
+            diferenciaPorcentaje: facturaData.diferenciaPorcentaje
+          },
+          integridadFiscal: {
+            valida: true,
+            alerta: false,
+            impuestoDetectado: facturaData.impuestos,
+            impuestoEsperado: facturaData.impuestos,
+            region: 'Colombia',
+            porcentajeRegion: 19
+          }
+        },
+        veredicto: facturaData.integridadValida ? "APROBADO" : "REVISION_REQUERIDA",
+        alertasCriticas: facturaData.integridadValida ? [] : ["INCONSISTENCIA_MATEMATICA"],
+        totalProductosDetectados: facturaData.productos.length,
+        origen: 'xml'
+      };
+
+      try {
+        await db.collection('facturasProcesadas').add({
+          proveedor: facturaData.proveedor,
+          idFiscal: facturaData.idFiscal,
+          fecha: facturaData.fecha,
+          total: facturaData.total,
+          impuestos: facturaData.impuestos,
+          productos: facturaData.productos,
+          region: 'Colombia',
+          moneda,
+          procesadoEn: new Date().toISOString(),
+          origen: 'xml_electronico',
+          rawXML: facturaData.rawXML?.substring(0, 200),
+          alertas: facturaData.integridadValida ? [] : ['INCONSISTENCIA_MATEMATICA']
+        });
+      } catch (dbError) {
+        logger.warn('No se pudo guardar en Firestore:', dbError.message);
+      }
+
+      logger.log(` XML procesado en ${Date.now() - startTime}ms`);
+      res.json(respuesta);
+      return;
+    }
+
+    if (!imagen) {
+      res.status(400).json({ 
+        success: false, 
+        mensaje: 'Debe proporcionar imagen (base64) o xmlContent' 
+      });
+      return;
+    }
+
+    logger.log(' Procesando imagen con OCR...');
+
+    const visionClient = getVisionClient();
+    const [result] = await visionClient.textDetection({ 
+      image: { content: imagen } 
+    });
+
+    const detections = result.textAnnotations;
+    if (!detections || detections.length === 0) {
+      res.json({ 
+        success: false, 
+        mensaje: 'No se detectó texto en la imagen' 
+      });
+      return;
+    }
+
+    const textoCompleto = detections[0].description;
+    const palabras = detections.slice(1);
+
+    logger.log(` OCR: ${textoCompleto?.length || 0} caracteres, proveedor: ${extraerProveedor(textoCompleto).substring(0, 30)}...`);
+
+    const region = detectarRegion(textoCompleto, moneda);
+    logger.log(` Región detectada: ${region.nombre} (${region.pais})`);
+
+    const proveedor = extraerProveedor(textoCompleto);
+    const idFiscal = extraerIdFiscal(textoCompleto, region);
+    const fecha = normalizarFecha(textoCompleto);
+    const total = extraerTotal(textoCompleto);
+    const impuestos = extraerImpuestos(textoCompleto, total, region);
+    let productos = extraerProductosPorCoordenadas(textoCompleto, palabras);
+
+    logger.log(` Proveedor: ${proveedor.substring(0, 30)}...`);
+    logger.log(` ID Fiscal: ${idFiscal || 'N/A'}`);
+    logger.log(` Fecha: ${fecha}`);
+    logger.log(` Total: ${total}`);
+    logger.log(` Impuestos: ${impuestos}`);
+    logger.log(` Productos detectados: ${productos.length}`);
+
+    const sumaProductos = productos.reduce((sum, prod) => sum + (prod.precioUnitario * prod.cantidad), 0);
+    const porcentajeDiferencia = total > 0 ? (Math.abs(sumaProductos - total) / total) * 100 : 0;
+    const alertaMatematica = porcentajeDiferencia > 1;
+
+    const impuestoEsperado = total > 0 ? Math.round((total - (total / (1 + region.porcentajeImpuesto / 100))) * 100) / 100 : 0;
+    const alertaFiscal = Math.abs(impuestos - impuestoEsperado) > (total * 0.02);
+
+    const alertasCriticas = [];
+    if (alertaMatematica) alertasCriticas.push("INCONSISTENCIA_MATEMATICA");
+    if (alertaFiscal) alertasCriticas.push("INCONSISTENCIA_FISCAL");
+
+    const productosOriginales = productos.length;
+    if (productos.length > 100) productos = productos.slice(0, 100);
+
+    try {
+      await db.collection('facturasProcesadas').add({
+        proveedor,
+        idFiscal,
+        fecha,
+        total,
+        impuestos,
+        productos,
+        region,
+        moneda,
+        totalProductosDetectados: productosOriginales,
+        procesadoEn: new Date().toISOString(),
+        origen: 'ocr_vision',
+        rawText: textoCompleto.substring(0, 200),
+        alertas: alertasCriticas
+      });
+    } catch (dbError) {
+      logger.warn('No se pudo guardar en Firestore:', dbError.message);
+    }
+
+    logger.log(` OCR procesado en ${Date.now() - startTime}ms`);
+    res.json({
+      success: true,
+      proveedor,
+      idFiscal,
+      fecha,
+      total,
+      impuestos,
+      productos,
+      region,
+      tipoImpuesto: region.impuesto,
+      rawText: textoCompleto.substring(0, 200),
+      validaciones: {
+        sumaProductos: Math.round(sumaProductos * 100) / 100,
+        integridadMatematica: {
+          valida: !alertaMatematica,
+          alerta: alertaMatematica,
+          diferenciaPorcentaje: parseFloat(porcentajeDiferencia.toFixed(2))
+        },
+        integridadFiscal: {
+          valida: !alertaFiscal,
+          alerta: alertaFiscal,
+          impuestoDetectado: impuestos,
+          impuestoEsperado,
+          region: region.pais,
+          porcentajeRegion: region.porcentajeImpuesto
+        }
+      },
+      veredicto: alertasCriticas.length === 0 ? "APROBADO" : "REVISION_REQUERIDA",
+      alertasCriticas,
+      totalProductosDetectados: productosOriginales,
+      origen: 'ocr'
+    });
+
+  } catch (error) {
+    logger.error(' Error en procesarFacturaVision:', error.message);
+    res.status(500).json({
+      success: false,
+      mensaje: 'Error procesando el documento',
+      error: error.message
+    });
+  }
+});
+
+export const soporteIA = onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new Error('Usuario no autenticado');
+  }
+  
+  const { pregunta, idioma = 'es', plan, userId, fechaLocal, historial = [] } = data;
+  
+  if (!pregunta || !userId) {
+    throw new Error('Faltan datos requeridos');
+  }
+  
+  try {
+    const usuarioRef = db.collection('usuarios').doc(userId);
+    const usuarioDoc = await usuarioRef.get();
+    
+    if (!usuarioDoc.exists) {
+      throw new Error('Usuario no encontrado');
+    }
+    
+    const creditosUsados = usuarioDoc.data()?.consultasSoporteIA || 0;
+    const limites = { starter: 20, gratis: 20, pro: 50, business: 200, elite: 999999 };
+    const limite = limites[plan] || 20;
+    
+    if (creditosUsados >= limite && plan !== 'elite') {
+      throw new Error(`Créditos agotados. Usados: ${creditosUsados}/${limite}`);
+    }
+    
+    const movimientosSnap = await db
+      .collection('movimientos')
+      .where('userId', '==', userId)
+      .orderBy('fecha', 'desc')
+      .limit(200)
+      .get();
+    
+    let ventas = 0, gastos = 0, stockBajo = [];
+    movimientosSnap.forEach(doc => {
+      const m = doc.data();
+      const valor = m.valorTotal || m.valor || 0;
+      if (m.tipo === 'ingreso') ventas += valor;
+      else if (m.tipo === 'egreso') gastos += valor;
+    });
+    
+    try {
+      const invSnap = await db
+        .collection('inventario')
+        .where('userId', '==', userId)
+        .where('cantidad', '<=', 5)
+        .limit(5)
+        .get();
+      invSnap.forEach(doc => stockBajo.push(doc.data().producto));
+    } catch (e) { }
+    
+    const margen = ventas > 0 ? ((ventas - gastos) / ventas * 100).toFixed(1) : 0;
+    
+    const geminiApiKey = process.env.GOOGLE_API_KEY;
+    const genAI = new GoogleGenerativeAI(geminiApiKey);
+    
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    
+    const systemPrompt = `Eres "Sargento", asesor financiero de STRATIUM AI.
+Contexto REAL del usuario (NO inventes datos):
+- Ventas: $${ventas.toLocaleString()} | Gastos: $${gastos.toLocaleString()} | Margen: ${margen}%
+- Stock bajo: ${stockBajo.length > 0 ? stockBajo.join(', ') : 'Ninguno'}
+- Plan: ${plan}
+
+Reglas:
+1. Responde en ${idioma === 'es' ? 'español' : 'english'}.
+2. Sé breve (máx. 3-4 frases) y práctico.
+3. Si faltan datos, pregunta claramente.
+4. NUNCA inventes números. Usa solo el contexto proporcionado.
+5. Si es consulta tributaria, da orientación general, no asesoría legal.`;
+
+    const chatHistory = historial.slice(-5).map(h => ({
+      role: h.esUsuario ? 'user' : 'model',
+      parts: [{ text: h.texto.substring(0, 500) }]
+    }));
+    
+    const chat = model.startChat({
+      history: chatHistory,
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 300
+      }
+    });
+    
+    const result = await chat.sendMessage(`${systemPrompt}\n\nUsuario: ${pregunta}`);
+    const respuesta = result.response.text();
+    
+    await db.collection('soporteConversaciones').add({
+      userId,
+      texto: pregunta.substring(0, 200) + (pregunta.length > 200 ? '...' : ''),
+      esUsuario: true,
+      fecha: new Date().toISOString(),
+      fechaLocal: fechaLocal || new Date().toISOString()
+    });
+    
+    await db.collection('soporteConversaciones').add({
+      userId,
+      texto: respuesta.substring(0, 500) + (respuesta.length > 500 ? '...' : ''),
+      esUsuario: false,
+      fecha: new Date().toISOString(),
+      fechaLocal: new Date().toISOString()
+    });
+    
+    await usuarioRef.update({
+      consultasSoporteIA: (creditosUsados + 1),
+      ultimaConsultaIA: new Date().toISOString()
+    });
+    
+    return { respuesta };
+    
+  } catch (error) {
+    logger.error('Error en soporteIA:', error.message);
+    throw new Error('Error: ' + error.message);
+  }
+});
+
+export const procesarDocumentoSupportBot = onRequest({ cors: true, timeoutSeconds: 120, memory: '512MiB' }, async (req, res) => {
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ success: false, mensaje: 'Use POST' });
+        return;
+    }
+
+    try {
+        const { mensaje, imagen_base64 } = req.body;
+
+        if (!mensaje || !imagen_base64) {
+            res.status(400).json({ 
+                success: false, 
+                mensaje: 'Faltan campos requeridos: mensaje e imagen_base64' 
+            });
+            return;
+        }
+
+        const resultado = await handle_escaneo_documentos(mensaje, imagen_base64);
+        res.status(200).json(resultado);
+
+    } catch (error) {
+        logger.error('Error en SupportBot:', error);
+        res.status(500).json({ 
+            success: false, 
+            mensaje: error.message 
+        });
+    }
+});
+
+export const healthCheckSupportBot = onRequest({ cors: true }, (req, res) => {
+    res.status(200).json({
+        status: 'OK',
+        supportBot: 'activo',
+        timestamp: new Date().toISOString()
+    });
+});
+
+export const ejecutarComandoBasico = onRequest({ cors: true, timeoutSeconds: 60, memory: '256MiB' }, async (req, res) => {
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+
+    if (req.method !== 'POST') {
+        res.status(405).json({ error: 'Método no permitido' });
+        return;
+    }
+
+    try {
+        const { comando, idioma = 'es' } = req.body;
+        const userId = req.headers.authorization || 'anonymous';
+        
+        if (!comando || comando.trim() === '') {
+            res.status(400).json({ respuesta: 'Escribe un comando válido.' });
+            return;
+        }
+        
+        const texto = comando.toLowerCase();
+        
+        if (texto.includes('registra:') || (texto.includes('compra') && !texto.includes('venta'))) {
+            
+            let cantidad = 1;
+            let valorTotal = 0;
+            let producto = 'Producto';
+            let proveedor = '';
+            let esCredito = texto.includes('credito') || texto.includes('crédito') || texto.includes('fiado');
+            
+            const cantidadMatch = comando.match(/(\d+)\s*(?:unidades?|pares?|items?|productos?)/i);
+            if (cantidadMatch) cantidad = parseInt(cantidadMatch[1]);
+            
+            const valorMatch = comando.match(/(?:por|total|valor)\s*[\$]?\s*([\d.,]+)/i);
+            if (valorMatch) valorTotal = limpiarNumero(valorMatch[1]);
+            
+            if (!valorTotal) {
+                const numeros = comando.match(/[\d.,]+/g);
+                if (numeros) {
+                    const valores = numeros.map(n => limpiarNumero(n));
+                    valorTotal = Math.max(...valores);
+                }
+            }
+            
+            const productMatch = comando.match(/(?:de|para)\s+(\d+\s+)?([a-záéíóúñ\s]{3,30}?)(?:\s+(?:a|por|con|para|credito|efectivo|$))/i);
+            if (productMatch && productMatch[2]) producto = productMatch[2].trim();
+            
+            const provMatch = comando.match(/(?:se le debe a|proveedor|a)\s+([a-záéíóúñ\s]{3,30}?)(?:\s+(?:por|para|$))/i);
+            if (provMatch) proveedor = provMatch[1].trim();
+            
+            if (!valorTotal || valorTotal <= 0) {
+                res.json({ respuesta: ' No entendí el valor de la compra. Ejemplo: "registra: compra de 10 zapatos por 550000"' });
+                return;
+            }
+            
+            const precioUnitario = valorTotal / cantidad;
+            const estado = esCredito ? 'PENDIENTE' : 'PAGADO';
+            
+            const movimiento = {
+                userId,
+                tipo: 'egreso',
+                categoria: 'INVENTARIO',
+                concepto: producto,
+                cantidad,
+                valor: valorTotal,
+                precioUnitario: Math.round(precioUnitario * 100) / 100,
+                proveedor: proveedor || 'No especificado',
+                estado,
+                fecha: new Date().toISOString(),
+                fechaCreacion: new Date().toISOString()
+            };
+            
+            await db.collection('movimientos').add(movimiento);
+            
+            const inventarioRef = db.collection('inventario');
+            const q = await inventarioRef.where('userId', '==', userId).where('producto', '==', producto).get();
+            
+            if (q.empty) {
+                await inventarioRef.add({
+                    userId,
+                    producto,
+                    cantidad,
+                    costoUnitario: Math.round(precioUnitario * 100) / 100,
+                    fechaActualizacion: new Date().toISOString()
+                });
+            } else {
+                const doc = q.docs[0];
+                const data = doc.data();
+                const nuevaCantidad = (data.cantidad || 0) + cantidad;
+                const nuevoCosto = ((data.cantidad || 0) * (data.costoUnitario || 0) + (cantidad * precioUnitario)) / nuevaCantidad;
+                await doc.ref.update({
+                    cantidad: nuevaCantidad,
+                    costoUnitario: Math.round(nuevoCosto * 100) / 100,
+                    fechaActualizacion: new Date().toISOString()
+                });
+            }
+            
+            let respuesta = ` **COMPRA REGISTRADA**\n`;
+            respuesta += ` ${cantidad} ${producto}\n`;
+            respuesta += ` Total: ${formatearMoneda(valorTotal)}\n`;
+            respuesta += ` Unitario: ${formatearMoneda(precioUnitario)}\n`;
+            respuesta += ` Proveedor: ${proveedor || 'No especificado'}\n`;
+            respuesta += ` Estado: ${estado}`;
+            
+            res.json({ respuesta });
+            return;
+        }
+        
+        if (texto.includes('venta:') || texto.includes('vendí') || texto.includes('vendi')) {
+            
+            let cantidad = 1;
+            let valorTotal = 0;
+            let producto = 'Producto';
+            let cliente = '';
+            let esCredito = texto.includes('credito') || texto.includes('crédito') || texto.includes('fiado');
+            
+            const cantidadMatch = comando.match(/(\d+)\s*(?:unidades?|pares?|items?)/i);
+            if (cantidadMatch) cantidad = parseInt(cantidadMatch[1]);
+            
+            const valorMatch = comando.match(/(?:a|por)\s*[\$]?\s*([\d.,]+)/i);
+            if (valorMatch) valorTotal = limpiarNumero(valorMatch[1]);
+            
+            if (!valorTotal) {
+                const numeros = comando.match(/[\d.,]+/g);
+                if (numeros) {
+                    const valores = numeros.map(n => limpiarNumero(n));
+                    valorTotal = Math.max(...valores);
+                }
+            }
+            
+            const productMatch = comando.match(/(?:de|venta|vend[ií])\s+(\d+\s+)?([a-záéíóúñ\s]{3,30}?)(?:\s+(?:a|por|para|$))/i);
+            if (productMatch && productMatch[2]) producto = productMatch[2].trim();
+            
+            const clientMatch = comando.match(/(?:a|cliente|para)\s+([a-záéíóúñ\s]{3,30}?)(?:\s+(?:por|$))/i);
+            if (clientMatch) cliente = clientMatch[1].trim();
+            
+            if (!valorTotal || valorTotal <= 0) {
+                res.json({ respuesta: ' No entendí el valor de la venta. Ejemplo: "venta: 3 camisas a 60 mil"' });
+                return;
+            }
+            
+            const inventarioRef = db.collection('inventario');
+            const q = await inventarioRef.where('userId', '==', userId).where('producto', '==', producto).get();
+            let costoUnitario = 0;
+            
+            if (!q.empty) {
+                costoUnitario = q.docs[0].data().costoUnitario || 0;
+                const data = q.docs[0].data();
+                const nuevaCantidad = (data.cantidad || 0) - cantidad;
+                await q.docs[0].ref.update({ cantidad: Math.max(0, nuevaCantidad) });
+            }
+            
+            const precioUnitario = valorTotal / cantidad;
+            const costoTotal = costoUnitario * cantidad;
+            const ganancia = valorTotal - costoTotal;
+            const margen = valorTotal > 0 ? (ganancia / valorTotal) * 100 : 0;
+            
+            const movimiento = {
+                userId,
+                tipo: 'ingreso',
+                categoria: 'VENTA',
+                concepto: producto,
+                cantidad,
+                valor: valorTotal,
+                precioUnitario: Math.round(precioUnitario * 100) / 100,
+                costoUnitario: Math.round(costoUnitario * 100) / 100,
+                costoTotal: Math.round(costoTotal * 100) / 100,
+                ganancia: Math.round(ganancia * 100) / 100,
+                margen: Math.round(margen * 10) / 10,
+                cliente: cliente || 'Cliente general',
+                estado: esCredito ? 'PENDIENTE' : 'PAGADO',
+                fecha: new Date().toISOString(),
+                fechaCreacion: new Date().toISOString()
+            };
+            
+            await db.collection('movimientos').add(movimiento);
+            
+            let respuesta = ` **VENTA REGISTRADA**\n`;
+            respuesta += ` ${cantidad} ${producto}\n`;
+            respuesta += ` Total: ${formatearMoneda(valorTotal)}\n`;
+            respuesta += ` Unitario: ${formatearMoneda(precioUnitario)}\n`;
+            respuesta += ` Costo unitario: ${formatearMoneda(costoUnitario)}\n`;
+            respuesta += ` Ganancia: ${formatearMoneda(ganancia)} (${margen.toFixed(1)}%)\n`;
+            respuesta += ` Cliente: ${cliente || 'Cliente general'}\n`;
+            respuesta += ` Estado: ${esCredito ? 'PENDIENTE' : 'PAGADO'}`;
+            
+            res.json({ respuesta });
+            return;
+        }
+        
+        if (texto.includes('informe') || texto.includes('presenta:')) {
+            
+            const esInformeCompleto = texto.includes('completo') || texto.includes('full');
+            
+            if (esInformeCompleto) {
+                let plan = 'starter';
+                try {
+                    const userDoc = await db.collection('usuarios').doc(userId).get();
+                    if (userDoc.exists) plan = userDoc.data().plan || 'starter';
+                } catch (e) { logger.error(e); }
+                
+                const resultado = await generarReporteCompleto(userId, idioma, plan);
+                
+                if (resultado.error) {
+                    res.json({ respuesta: resultado.mensaje });
+                    return;
+                }
+                
+                let respuesta = ` **INFORME FINANCIERO COMPLETO**\n`;
+                respuesta += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+                respuesta += ` Ventas: ${formatearMoneda(resultado.datos.ventas_totales)}\n`;
+                respuesta += ` Compras: ${formatearMoneda(resultado.datos.costo_ventas)}\n`;
+                respuesta += ` Gastos: ${formatearMoneda(resultado.datos.gastos_operativos)}\n`;
+                respuesta += ` Utilidad: ${formatearMoneda(resultado.datos.utilidad_neta)}\n`;
+                respuesta += ` Margen: ${resultado.datos.margen_neto.toFixed(1)}%\n\n`;
+                
+                respuesta += ` **FLUJO DE CAJA**\n`;
+                respuesta += ` Ingresos operativos: ${formatearMoneda(resultado.datos.flujo_caja.ingresos_operativos)}\n`;
+                respuesta += ` Egresos operativos: ${formatearMoneda(resultado.datos.flujo_caja.egresos_operativos)}\n`;
+                respuesta += ` Flujo operativo: ${formatearMoneda(resultado.datos.flujo_caja.flujo_operativo)}\n`;
+                respuesta += ` Saldo final: ${formatearMoneda(resultado.datos.flujo_caja.saldo_final)}\n`;
+                
+                res.json({ respuesta, pdfBuffer: resultado.pdfBuffer });
+                return;
+            }
+            
+            const movimientosRef = db.collection('movimientos');
+            const snapshot = await movimientosRef.where('userId', '==', userId).orderBy('fecha', 'desc').limit(500).get();
+            
+            const movimientos = snapshot.docs.map(doc => doc.data());
+            const ventas = movimientos.filter(m => m.tipo === 'ingreso');
+            const compras = movimientos.filter(m => m.tipo === 'egreso' && m.categoria === 'INVENTARIO');
+            const gastos = movimientos.filter(m => m.tipo === 'egreso' && m.categoria !== 'INVENTARIO');
+            
+            const totalVentas = ventas.reduce((s, m) => s + (m.valor || 0), 0);
+            const totalCompras = compras.reduce((s, m) => s + (m.valor || 0), 0);
+            const totalGastos = gastos.reduce((s, m) => s + (m.valor || 0), 0);
+            const utilidad = totalVentas - totalCompras - totalGastos;
+            const margen = totalVentas > 0 ? (utilidad / totalVentas) * 100 : 0;
+            
+            let respuesta = ` **INFORME FINANCIERO**\n`;
+            respuesta += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+            respuesta += ` Ventas: ${formatearMoneda(totalVentas)}\n`;
+            respuesta += ` Compras: ${formatearMoneda(totalCompras)}\n`;
+            respuesta += ` Gastos: ${formatearMoneda(totalGastos)}\n`;
+            respuesta += ` Utilidad: ${formatearMoneda(utilidad)}\n`;
+            respuesta += ` Margen: ${margen.toFixed(1)}%\n\n`;
+            
+            respuesta += ` **ÚLTIMOS MOVIMIENTOS**\n`;
+            movimientos.slice(0, 5).forEach(m => {
+                const signo = m.tipo === 'ingreso' ? '+' : '-';
+                respuesta += ` ${m.concepto}: ${signo} ${formatearMoneda(m.valor || 0)}\n`;
+            });
+            
+            res.json({ respuesta });
+            return;
+        }
+        
+        res.json({ 
+            respuesta: ` **Comandos disponibles:**\n\n` +
+                      ` **Registrar compra:**\n"registra: compra de 10 zapatos por 550000"\n\n` +
+                      ` **Registrar venta:**\n"venta: 3 camisas a 60 mil"\n\n` +
+                      ` **Ver informe:**\n"informe" o "presenta: informe"`
+        });
+        
+    } catch (error) {
+        logger.error('Error en ejecutarComandoBasico:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+export const registrarAmortizacion = onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new Error('Usuario no autenticado');
+    }
+    
+    const { concepto, valorTotal, vidaUtilMeses, userId } = data;
+    
+    if (!concepto || !valorTotal || !vidaUtilMeses || !userId) {
+        throw new Error('Faltan datos: concepto, valorTotal, vidaUtilMeses, userId');
+    }
+    
+    const mensual = valorTotal / vidaUtilMeses;
+    
+    await db.collection('amortizaciones').add({
+        userId,
+        concepto,
+        valorTotal: parseFloat(valorTotal),
+        vidaUtilMeses: parseInt(vidaUtilMeses),
+        amortizacionMensual: Math.round(mensual * 100) / 100,
+        mesesRestantes: parseInt(vidaUtilMeses),
+        activo: true,
+        fechaInicio: new Date().toISOString(),
+        creadoEn: new Date().toISOString()
+    });
+    
+    return { 
+        success: true, 
+        mensaje: `Amortización registrada: ${concepto} - $${mensual.toFixed(2)}/mes por ${vidaUtilMeses} meses` 
+    };
+});
+
