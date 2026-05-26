@@ -21,16 +21,16 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[Service Worker] Notificación en segundo plano:', payload);
   
-  const notificationTitle = payload.notification?.title || 'Stratium AI';
-  const notificationOptions = {
-    body: payload.notification?.body || '',
-    icon: '/icon-192.png',
-    badge: '/icon-96.png',
-    tag: 'stratium-notification',
-    data: payload.data || {},
-    requireInteraction: true,
-    vibrate: [200, 100, 200]
-  };
+  const notificationTitle = payload.notification?.title || 'Stratium Global AI';
+const notificationOptions = {
+  body: payload.notification?.body || '',
+  icon: '/icon-192.png',
+  badge: '/icon-96.png',
+  tag: 'stratium-notification',
+  data: payload.data || {},
+  requireInteraction: true,
+  vibrate: [200, 100, 200]
+};
   
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
@@ -51,3 +51,4 @@ self.addEventListener('notificationclick', (event) => {
       })
   );
 });
+

@@ -1,5 +1,5 @@
 {
-  "name": "stratium-ai",
+  "name": "stratium-global-ai",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -52,3 +52,5 @@
     "tailwindcss": "^4.2.2"
   }
 }
+
+

@@ -3,7 +3,7 @@ export default {
   // ============================================================
   // TÍTULOS Y TEXTOS PRINCIPALES
   // ============================================================
-  title: 'STRATIUM AI',
+  title: 'STRATIUM GLOBAL AI',
   subtitle: 'Especialista en Optimización de Costos y Auditoría Financiera con IA',
   
   // ============================================================
@@ -94,7 +94,7 @@ export default {
   materialsPerUnit: 'Materiales/Und',
   delete: '🗑️',
   auditFullBatch: '🔍 Auditar Lote Completo (v2.4-International)',
-  footerText1: 'Stratium AI v2.4-International • CO • EN',
+  footerText1: 'Stratium GLOBAL AI v2.4-International • CO • EN',
   footerText2: 'Factor prestacional: 1.52x • Comisión: 27.1% • Provisión: $10,000/und',
   footerText3: 'Auditoría financiera inteligente para emprendedores reales',
   productionAudit: 'Auditoría de Producción',
@@ -324,7 +324,7 @@ export default {
   // ============================================================
   // LOGIN Y AUTENTICACIÓN
   // ============================================================
-  loginTitle: 'Bienvenido a STRATIUM AI',
+  loginTitle: 'Bienvenido a STRATIUM GLOBAL AI',
   loginSubtitle: 'Tu asistente financiero con IA',
   email: 'Correo electrónico',
   password: 'Contraseña',
@@ -462,7 +462,68 @@ export default {
   manualTransactionEntry: 'Registro Manual de Movimientos',
   financialRecords: 'Registros Financieros',
   auditReport: 'Dictamen de Auditoría',
+
+  // ============================================================
+  // CLAVES PARA DASHBOARD INSIGHTS (AGREGAR)
+  // ============================================================
+  boneProducts: '🦴 Productos Hueso',
+  noBoneProducts: 'No hay productos hueso en inventario',
+  salesTrend: '📈 Tendencia de Ventas',
+  thisWeek: 'Esta semana',
+  vsLastWeek: 'vs semana pasada',
+  alertaCajaCritica: '🚨 ¡ALERTA! Tu saldo cubre solo {dias} días. Necesitas acción inmediata.',
+  alertaCajaBaja: '⚠️ Tu saldo cubre solo {dias} días. Necesitas ${monto} para llegar a 5 días.',
+  alertaMargenBajo: '📉 Tu margen neto es {margen}%. Está por debajo del 15% recomendado.',
+  alertaInactividad: '📢 Llevas {dias} días sin registrar movimientos.',
+  mensajePositivo: '✅ Todo está en orden. Sigue así para mantener tu negocio saludable.',
+  starProducts: '⭐ Productos Estrella',
+  noStarProducts: 'Aún no hay productos estrella. Registra más ventas.',
+  starProductsTip: '⭐ Tu producto estrella es "{producto}". Destina presupuesto de marketing.',
+  boneProductsTip: '🦴 Tienes {cantidad} productos sin rotación. Revisa precios.',
+  lowMarginTip: '💰 Tus márgenes están bajos. Revisa costos o precios de venta.',
+  positiveMessage: '✅ Todo marcha bien. Sigue así.',
+  noSalesAlert: '📢 Aún no has registrado ventas. Activa tu estrategia comercial para empezar a generar ingresos.',
   
+  // ============================================================
+  // TÉRMINOS FINANCIEROS CORREGIDOS
+  // ============================================================
+  grossMargin: 'Margen Bruto',
+  cashBalance: 'Saldo en Caja',
+  cashOnHand: 'Efectivo en Caja',
+  deadStock: 'Productos sin Rotación',
+  topPerformers: 'Productos Destacados',
+  businessFunds: '💰 Fondos del negocio',
+  personalFunds: '👤 Fondos personales',
+  
+  // ============================================================
+  // LEYENDA DEL GRÁFICO
+  // ============================================================
+  salesLegend: 'Ventas',
+  expensesLegend: 'Gastos',
+  purchasesLegend: 'Compras',
+  capitalLegend: 'Capital',
+  profitLegend: 'Utilidad',
+
+"critical_products_title": "⚠️ Productos Críticos (Baja Rotación / Peligro de Quiebra)",
+"no_critical_products": "✅ No tienes productos estancados en el inventario. El flujo es óptimo.",
+productDetail: "Detalle del producto",
+batchQuantity: "Cantidad del lote", 
+totalMfgHours: "Horas totales de Fabricación",
+estimatedSellingPrice: "Precio estimado de venta",
+materialCostPerBatch: "Costo de materiales por lote",
+hoursPlaceholder: "Horas",
+materialsPlaceholder: "Materiales totales",
+totalHoursTooltip: "Horas TOTALES para fabricar este producto",
+totalMaterialsTooltip: "Costo TOTAL de materiales para este lote",
+suggestedStrategy: "ESTRATEGIA SUGERIDA:",
+ideal50: "Ideal (50%)",
+phase30_40: "30 días (40%)",
+phase60_30: "60 días (30%)",
+phase90_10: "90 días (10%)",
+projectedDays: "días proyectados de cobertura",
+upgradeToBusiness: "Business/Elite",
+upgradeToContinue: "Renueva para continuar",
+
   // ============================================================
   // VARIOS
   // ============================================================

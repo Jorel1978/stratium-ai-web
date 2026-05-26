@@ -195,7 +195,7 @@ export const verificarVencimientoProductos = async (userEmail) => {
       let mensajeHTML = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">⏰ ALERTA DE VENCIMIENTO</h2>
-          <p style="color: #555;">Los siguientes productos están por vencer en tu inventario de STRATIUM AI:</p>
+          <p style="color: #555;">Los siguientes productos están por vencer en tu inventario de STRATIUM GLOBAL AI:</p>
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
             <thead>
               <tr style="background-color: #f8f9fa;">
@@ -236,7 +236,7 @@ export const verificarVencimientoProductos = async (userEmail) => {
           </table>
           <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0; color: #555;">
-              <strong>💡 Recomendación STRATIUM AI:</strong> Ofrece descuentos urgentes o promociones flash para liquidar estos productos antes de que venzan.
+              <strong>💡 Recomendación STRATIUM GLOBAL AI:</strong> Ofrece descuentos urgentes o promociones flash para liquidar estos productos antes de que venzan.
             </p>
           </div>
           <div style="text-align: center; margin: 25px 0;">
@@ -247,7 +247,7 @@ export const verificarVencimientoProductos = async (userEmail) => {
           </div>
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
           <p style="font-size: 12px; color: #888; text-align: center;">
-            STRATIUM AI - Tu asistente financiero con IA<br>
+            STRATIUM GLOBAL AI - Tu asistente financiero con IA<br>
             <a href="${APP_URL}" style="color: #3498db; text-decoration: none;">agente-financiero-ia.web.app</a>
           </p>
         </div>
@@ -255,7 +255,7 @@ export const verificarVencimientoProductos = async (userEmail) => {
       
       const emailEnviado = await enviarCorreoAlerta(
         emailDestino,
-        `⏰ STRATIUM AI: ${productosPorVencer.length} producto${productosPorVencer.length > 1 ? 's' : ''} por vencer`,
+        `⏰ STRATIUM GLOBAL AI: ${productosPorVencer.length} producto${productosPorVencer.length > 1 ? 's' : ''} por vencer`,
         mensajeHTML,
         'vencimiento'
       );
@@ -337,7 +337,7 @@ export const verificarStockBajo = async (userEmail) => {
       let mensajeHTML = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #e67e22; border-bottom: 2px solid #e67e22; padding-bottom: 10px;">⚠️ ALERTA DE STOCK BAJO</h2>
-          <p style="color: #555;">Los siguientes productos tienen inventario crítico en STRATIUM AI:</p>
+          <p style="color: #555;">Los siguientes productos tienen inventario crítico en STRATIUM GLOBAL AI:</p>
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
             <thead>
               <tr style="background-color: #f8f9fa;">
@@ -373,7 +373,7 @@ export const verificarStockBajo = async (userEmail) => {
           </table>
           <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
             <p style="margin: 0; color: #856404;">
-              <strong>💡 Recomendación STRATIUM AI:</strong> Realiza pedidos a tus proveedores lo antes posible para evitar desabastecimiento y pérdida de ventas.
+              <strong>💡 Recomendación STRATIUM GLOBAL AI:</strong> Realiza pedidos a tus proveedores lo antes posible para evitar desabastecimiento y pérdida de ventas.
             </p>
           </div>
           <div style="text-align: center; margin: 25px 0;">
@@ -384,7 +384,7 @@ export const verificarStockBajo = async (userEmail) => {
           </div>
           <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
           <p style="font-size: 12px; color: #888; text-align: center;">
-            STRATIUM AI - Tu asistente financiero con IA<br>
+            STRATIUM GLOBAL AI - Tu asistente financiero con IA<br>
             <a href="${APP_URL}" style="color: #3498db; text-decoration: none;">agente-financiero-ia.web.app</a>
           </p>
         </div>
@@ -392,7 +392,7 @@ export const verificarStockBajo = async (userEmail) => {
       
       const emailEnviado = await enviarCorreoAlerta(
         emailDestino,
-        `⚠️ STRATIUM AI: ${productosStockBajo.length} producto${productosStockBajo.length > 1 ? 's' : ''} con stock bajo`,
+        `⚠️ STRATIUM GLOBAL AI: ${productosStockBajo.length} producto${productosStockBajo.length > 1 ? 's' : ''} con stock bajo`,
         mensajeHTML,
         'stock'
       );

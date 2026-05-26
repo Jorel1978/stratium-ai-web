@@ -887,7 +887,12 @@ export const useAuditEngine = (usuarioActual) => {
     regionesDisponibles: Object.keys(REGIONES)
       .filter(k => k !== 'DEFAULT')
       .map(k => ({ key: k, nombre: REGIONES[k].nombre })),
-    plataformasDisponibles: ['MERCADO_LIBRE', 'SHOPIFY', 'AMAZON', 'PROPIA'],
+    plataformasDisponibles: [
+      { id: 'MERCADO_LIBRE', label: { es: 'Mercado Libre', en: 'Mercado Libre' } },
+      { id: 'SHOPIFY', label: { es: 'Shopify', en: 'Shopify' } },
+      { id: 'AMAZON', label: { es: 'Amazon', en: 'Amazon' } },
+      { id: 'PROPIA', label: { es: 'PROPIA', en: 'OWN PLATFORM' } }
+    ],
     categoriasDisponibles: ['electronica', 'moda', 'hogar', 'default'],
     forzarRedeteccionRegion
   };

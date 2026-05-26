@@ -61,7 +61,7 @@ export const configurarNotificaciones = async (usuario, onPermissionGranted, onP
   // Verificar VAPID Key antes de continuar
   if (!isVapidKeyValid()) {
     if (onPermissionDenied) {
-      onPermissionDenied('🔧 Error de configuración. Contacta al soporte de Stratium AI.');
+      onPermissionDenied('🔧 Error de configuración. Contacta al soporte de Stratium Global AI.');
     }
     return null;
   }
@@ -100,7 +100,7 @@ export const configurarNotificaciones = async (usuario, onPermissionGranted, onP
       console.warn('⚠️ Permiso de notificaciones denegado por el usuario');
       if (onPermissionDenied) {
         onPermissionDenied(
-          '🔕 Para que Stratium AI te avise de alertas importantes, ' +
+          '🔕 Para que Stratium Global AI te avise de alertas importantes, ' +
           'necesitas habilitar las notificaciones. Puedes cambiarlo en configuración.'
         );
       }
@@ -344,7 +344,7 @@ export const getNotificationText = (type, paisCode = 'CO', idioma = 'es', params
   
   const tipoData = tipos[type];
   if (!tipoData) {
-    return { title: 'Stratium AI', body: '' };
+    return { title: 'Stratium Global AI', body: '' };
   }
   
   // Intentar obtener del sistema de localización

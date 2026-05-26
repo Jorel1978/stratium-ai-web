@@ -29,7 +29,7 @@ const OnboardingNegocioExistente = ({ usuarioActual, onComplete, onSkip, onDiagn
   const textos = {
     es: {
       titulo: '🏢 Configura tu negocio existente',
-      subtitulo: 'Completa estos datos para que STRATIUM AI pueda analizar tu situación actual',
+      subtitulo: 'Completa estos datos para que STRATIUM GLOBAL AI pueda analizar tu situación actual',
       paso1: '💰 Capital Invertido',
       paso2: '📦 Inventario Actual',
       paso3: '📋 Cuentas por Cobrar',
@@ -64,7 +64,7 @@ const OnboardingNegocioExistente = ({ usuarioActual, onComplete, onSkip, onDiagn
     },
     en: {
       titulo: '🏢 Set up your existing business',
-      subtitulo: 'Complete this data so STRATIUM AI can analyze your current situation',
+      subtitulo: 'Complete this data so STRATIUM GLOBAL AI can analyze your current situation',
       paso1: '💰 Invested Capital',
       paso2: '📦 Current Inventory',
       paso3: '📋 Accounts Receivable',

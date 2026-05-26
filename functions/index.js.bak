@@ -1331,7 +1331,7 @@ export const soporteIA = onCall(async (data, context) => {
     
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
     
-    const systemPrompt = `Eres "Sargento", asesor financiero de STRATIUM AI.
+    const systemPrompt = `Eres "Sargento", asesor financiero de STRATIUM GLOBAL AI.
 Contexto REAL del usuario (NO inventes datos):
 - Ventas: $${ventas.toLocaleString()} | Gastos: $${gastos.toLocaleString()} | Margen: ${margen}%
 - Stock bajo: ${stockBajo.length > 0 ? stockBajo.join(', ') : 'Ninguno'}

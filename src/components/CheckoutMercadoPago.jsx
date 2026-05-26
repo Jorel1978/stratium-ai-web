@@ -3,69 +3,74 @@ import React, { useState } from 'react';
 const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onError, onClose }) => {
   const [loading, setLoading] = useState(false);
 
-  // ✅ PLANES DE SUSCRIPCIÓN (COP y USD)
+  // ✅ PLANES DE PAGO (Starter es gratuito, no se paga)
   const planData = {
-    starter: { title: 'STRATIUM AI - Plan Starter', priceCOP: 29900, priceUSD: 9.99 },
-    pro: { title: 'STRATIUM AI - Plan Pro', priceCOP: 79900, priceUSD: 29.99 },
-    business: { title: 'STRATIUM AI - Plan Business', priceCOP: 199900, priceUSD: 79.99 },
-    elite: { title: 'STRATIUM AI - Plan Elite', priceCOP: 499900, priceUSD: 199.99 }
+    pro: { title: 'STRATIUM GLOBAL AI - Plan Pro', priceCOP: 79900, priceUSD: 29.99 },
+    business: { title: 'STRATIUM GLOBAL AI - Plan Business', priceCOP: 199900, priceUSD: 79.99 },
+    elite: { title: 'STRATIUM GLOBAL AI - Plan Elite', priceCOP: 499900, priceUSD: 199.99 }
   };
 
   // ✅ PAQUETES DE CRÉDITOS PARA SOPORTE IA (COP y USD)
   const paquetesSoporte = {
-    'creditos_soporte_basico': { title: 'Pack Básico - Créditos Soporte IA', creditos: 5, priceCOP: 9900, priceUSD: 4.99 },
+    'creditos_soporte_basico': { title: 'Pack Básico - Créditos Soporte IA', creditos: 5, priceCOP: 9900, priceUSD: 3.99 },
     'creditos_soporte_frecuente': { title: 'Pack Frecuente - Créditos Soporte IA', creditos: 15, priceCOP: 19900, priceUSD: 9.99 },
     'creditos_soporte_profesional': { title: 'Pack Profesional - Créditos Soporte IA', creditos: 40, priceCOP: 49900, priceUSD: 19.99 },
-    'creditos_soporte_empresarial': { title: 'Pack Empresarial - Créditos Soporte IA', creditos: 100, priceCOP: 99900, priceUSD: 39.99 }
+    'creditos_soporte_empresarial': { title: 'Pack Empresarial - Créditos Soporte IA', creditos: 100, priceCOP: 99900, priceUSD: 29.99 }
   };
 
   // Detectar si es un paquete de soporte o un plan normal
   const esPaqueteSoporte = plan?.startsWith('creditos_soporte_');
+  
+  // Si es Starter (gratis), no mostrar checkout
+  if (plan === 'starter') {
+    if (onError) onError("El plan Starter es gratuito. No requiere pago.");
+    onClose();
+    return null;
+  }
   
   let selectedPlan;
   let selectedPaquete;
   
   if (esPaqueteSoporte) {
     selectedPaquete = paquetesSoporte[plan];
-    if (!selectedPaquete) {
-      console.error('Paquete de soporte no válido:', plan);
-      return null;
-    }
+    if (!selectedPaquete) return null;
   } else {
     selectedPlan = planData[plan];
-    if (!selectedPlan) {
-      console.error('Plan no válido:', plan);
-      return null;
-    }
+    if (!selectedPlan) return null;
   }
 
-  // ✅ PRECIOS SEGÚN MONEDA DEL USUARIO
+  // ✅ PRECIOS SEGÚN MONEDA DEL USUARIO (COMO NÚMEROS)
   const price = esPaqueteSoporte && selectedPaquete
-    ? (moneda?.mostrarCOP ? selectedPaquete.priceCOP : selectedPaquete.priceUSD)
-    : (moneda?.mostrarCOP ? selectedPlan?.priceCOP : selectedPlan?.priceUSD);
+    ? Number(moneda === 'COP' ? selectedPaquete.priceCOP : selectedPaquete.priceUSD)
+    : Number(moneda === 'COP' ? selectedPlan.priceCOP : selectedPlan.priceUSD);
     
-  const currency = moneda?.mostrarCOP ? 'COP' : 'USD';
+  const currency = moneda === 'COP' ? 'COP' : 'USD';
   
   const productTitle = esPaqueteSoporte && selectedPaquete
     ? selectedPaquete.title
-    : selectedPlan?.title;
+    : selectedPlan.title;
 
   // ✅ TEXTO PARA MOSTRAR EN EL MODAL
   let displayPrice = '';
-  let displayTitle = '';
   
   if (esPaqueteSoporte && selectedPaquete) {
-    displayTitle = selectedPaquete.title;
-    displayPrice = moneda?.mostrarCOP 
+    displayPrice = moneda === 'COP' 
       ? `$${selectedPaquete.priceCOP.toLocaleString()} COP`
       : `$${selectedPaquete.priceUSD} USD`;
   } else {
-    const titles = { starter: 'Starter', pro: 'Pro', business: 'Business', elite: 'Elite' };
-    displayTitle = `${titles[plan]} - ${moneda?.mostrarCOP ? `$${selectedPlan?.priceCOP.toLocaleString()} COP/mes` : `$${selectedPlan?.priceUSD} USD/mes`}`;
-    displayPrice = moneda?.mostrarCOP ? `$${selectedPlan?.priceCOP.toLocaleString()} COP/mes` : `$${selectedPlan?.priceUSD} USD/mes`;
+    displayPrice = moneda === 'COP' 
+      ? `$${selectedPlan.priceCOP.toLocaleString()} COP`
+      : `$${selectedPlan.priceUSD} USD`;
   }
 
-  const handlePagar = async () => {
+  const handlePagar = async (e) => {
+    if (e) e.preventDefault();
+    
+    if (!plan || !userEmail) {
+      if (onError) onError("Datos de pago incompletos");
+      return;
+    }
+    
     setLoading(true);
     try {
       const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
@@ -84,8 +89,8 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
           payer: { email: userEmail },
           back_urls: {
             success: window.location.origin + '/dashboard',
-            failure: window.location.origin + '/upgrade',
-            pending: window.location.origin + '/upgrade'
+            failure: window.location.origin + '/dashboard',
+            pending: window.location.origin + '/dashboard'
           },
           auto_return: 'approved',
           metadata: { 
@@ -98,10 +103,19 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
       });
 
       const data = await response.json();
-      window.location.href = data.init_point;
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Error al crear la preferencia");
+      }
+      
+      if (data.init_point) {
+        window.location.href = data.init_point;
+      } else {
+        throw new Error("No se pudo generar el link de pago");
+      }
       
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error en pago:', error);
       if (onError) onError(error.message);
     } finally {
       setLoading(false);
@@ -121,7 +135,7 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
 
         <div className="bg-slate-800/50 p-4 rounded-lg mb-6">
           <p className="text-cyan-400 font-bold text-center">
-            {displayTitle}
+            {productTitle}
           </p>
           <p className="text-gray-400 text-xs text-center mt-1">
             {displayPrice}
@@ -130,7 +144,7 @@ const CheckoutMercadoPago = ({ plan, userEmail, userId, moneda, onSuccess, onErr
 
         <div className="flex gap-3">
           <button
-            onClick={handlePagar}
+            onClick={(e) => handlePagar(e)}
             disabled={loading}
             className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-3 rounded-lg transition-all disabled:opacity-50"
           >

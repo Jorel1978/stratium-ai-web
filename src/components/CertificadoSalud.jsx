@@ -14,7 +14,7 @@ const CertificadoSaludFinanciera = ({ usuarioActual, analisisSalud, onClose }) =
     
     doc.setFontSize(22);
     doc.setTextColor(0, 100, 0);
-    doc.text('STRATIUM AI', 105, 30, { align: 'center' });
+    doc.text('STRATIUM GLOBAL AI', 105, 30, { align: 'center' });
     
     doc.setFontSize(18);
     doc.setTextColor(0, 0, 0);
@@ -50,7 +50,7 @@ const CertificadoSaludFinanciera = ({ usuarioActual, analisisSalud, onClose }) =
     doc.text('Escanea para verificar autenticidad', 170, 275, { align: 'center' });
     
     doc.setFontSize(8);
-    doc.text('Este certificado es generado automáticamente por STRATIUM AI.', 105, 285, { align: 'center' });
+    doc.text('Este certificado es generado automáticamente por STRATIUM GLOBAL AI.', 105, 285, { align: 'center' });
     doc.text('La información refleja el análisis de los últimos 90 días.', 105, 292, { align: 'center' });
     
     doc.save(`Certificado_Salud_${usuarioActual.nombre || usuarioActual.email}.pdf`);

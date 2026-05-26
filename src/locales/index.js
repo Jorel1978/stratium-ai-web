@@ -1,5 +1,5 @@
 // src/locales/index.js
-// Sistema de textos multilenguaje para Stratium AI
+// Sistema de textos multilenguaje para Stratium GLOBAL AI
 // Soporta plurales inteligentes y contexto cultural por país
 
 // Función auxiliar para manejar plurales
@@ -10,7 +10,7 @@ const pluralizar = (cantidad, singular, plural) => {
 // ==================== ESPAÑOL (BASE NEUTRA) ====================
 const BASE_ES = {
   // Navegación y títulos
-  titulo: '🏭 Stratium AI - Orden de Producción',
+  titulo: '🏭 Stratium GLOBAL AI - Orden de Producción',
   subtitulo: 'Auditoría financiera para emprendedores reales',
   tituloInventario: '📦 Inventario',
   tituloDashboard: '📊 Dashboard',
@@ -129,7 +129,7 @@ const BASE_ES = {
   consultorError: '❌ Error en la consulta. Intenta de nuevo.',
   consultorAriaLabel: 'Consultor tributario inteligente',
   consultorIcono: '🤝',
-  consultorDisclaimer: '⚠️ ADVERTENCIA: Stratium AI es una herramienta de apoyo y NO sustituye el consejo de un contador o abogado certificado. Las leyes tributarias cambian constantemente. Para casos específicos, consulta con un profesional de confianza.',
+  consultorDisclaimer: '⚠️ ADVERTENCIA: Stratium GLOBAL AI es una herramienta de apoyo y NO sustituye el consejo de un contador o abogado certificado. Las leyes tributarias cambian constantemente. Para casos específicos, consulta con un profesional de confianza.',
   
   // Iconos y emojis
   iconoLoading: '⏳',
@@ -177,7 +177,7 @@ const BASE_ES = {
   saludoManana: '¡Buenos días',
   saludoTarde: '¡Buenas tardes',
   saludoNoche: '¡Buenas noches',
-  bienvenidoPais: (pais) => `¡Bienvenido a Stratium AI - Tu socio financiero en ${pais}!`,
+  bienvenidoPais: (pais) => `¡Bienvenido a Stratium GLOBAL AI - Tu socio financiero en ${pais}!`,
   
   // ==================== ÉXITO Y ERRORES ====================
   exitoRegistro: '✅ ¡Listo! Lote registrado correctamente.',
@@ -199,7 +199,7 @@ const BASE_ES = {
   diasCubiertosLote: (dias) => `${dias} ${pluralizar(dias, 'día', 'días')} cubiertos por este lote`,
   
   // ==================== FOOTER ====================
-  footerVersion: 'Stratium AI v2.4 - Auditoría financiera inteligente',
+  footerVersion: 'Stratium GLOBAL AI v2.4 - Auditoría financiera inteligente',
   
   // ==================== SELECTOR DE PAÍS/IDIOMA ====================
   selectorPais: 'Selecciona tu país',
@@ -212,14 +212,14 @@ const BASE_ES = {
   fallbackNombre: 'Emprendedor',
   ariaSaludo: 'Saludo de bienvenida',
   horaLocalInfo: '⏱️ Hora local',
-  bienvenidoGenerico: 'Bienvenido a Stratium AI - Tu socio financiero en {pais}',
+  bienvenidoGenerico: 'Bienvenido a Stratium GLOBAL AI - Tu socio financiero en {pais}',
   
   // Mensajes contextuales por país
   bienvenidoPais_CO: '🇨🇴 ¡Vamos a cuidar tu negocio!',
   bienvenidoPais_MX: '🇲🇽 Vamos a hacer crecer tu negocio',
   bienvenidoPais_AR: '🇦🇷 Che, cuidemos los números',
   bienvenidoPais_CL: '🇨🇱 ¡Vamos a crecer juntos!',
-  bienvenidoPais_PE: '🇵🇪 Potencia tu negocio con Stratium',
+  bienvenidoPais_PE: '🇵🇪 Potencia tu negocio con Stratium GLOBAL AI',
   bienvenidoPais_UY: '🇺🇾 Tu socio financiero en Uruguay',
   bienvenidoPais_US: '🇺🇸 Let\'s grow your business',
   bienvenidoPais_GB: '🇬🇧 Let\'s grow your business',
@@ -232,7 +232,7 @@ const BASE_ES = {
 // ==================== INGLÉS (BASE NEUTRA) ====================
 const BASE_EN = {
   // Navigation
-  titulo: '🏭 Stratium AI - Production Order',
+  titulo: '🏭 Stratium GLOBAL AI - Production Order',
   subtitulo: 'Financial audit for real entrepreneurs',
   tituloInventario: '📦 Inventory',
   tituloDashboard: '📊 Dashboard',
@@ -351,7 +351,7 @@ const BASE_EN = {
   consultorError: '❌ Consultation error. Please try again.',
   consultorAriaLabel: 'Smart tax consultant',
   consultorIcono: '🤝',
-  consultorDisclaimer: '⚠️ WARNING: Stratium AI is a support tool and does NOT replace the advice of a certified accountant or attorney. Tax laws change frequently. For specific matters, consult a trusted professional.',
+  consultorDisclaimer: '⚠️ WARNING: Stratium GLOBAL AI is a support tool and does NOT replace the advice of a certified accountant or attorney. Tax laws change frequently. For specific matters, consult a trusted professional.',
   
   // Icons and emojis
   iconoLoading: '⏳',
@@ -399,7 +399,7 @@ const BASE_EN = {
   saludoManana: 'Good morning',
   saludoTarde: 'Good afternoon',
   saludoNoche: 'Good evening',
-  bienvenidoPais: (pais) => `Welcome to Stratium AI - Your financial partner in ${pais}!`,
+  bienvenidoPais: (pais) => `Welcome to Stratium GLOBAL AI - Your financial partner in ${pais}!`,
   
   // ==================== SUCCESS & ERRORS ====================
   exitoRegistro: '✅ Done! Batch registered successfully.',
@@ -421,7 +421,7 @@ const BASE_EN = {
   diasCubiertosLote: (dias) => `${dias} ${pluralizar(dias, 'day', 'days')} covered by this batch`,
   
   // ==================== FOOTER ====================
-  footerVersion: 'Stratium AI v2.4 - Smart financial audit',
+  footerVersion: 'Stratium GLOBAL AI v2.4 - Smart financial audit',
   
   // ==================== COUNTRY/LANGUAGE SELECTOR ====================
   selectorPais: 'Select your country',
@@ -434,7 +434,7 @@ const BASE_EN = {
   fallbackNombre: 'Entrepreneur',
   ariaSaludo: 'Welcome greeting',
   horaLocalInfo: '⏱️ Local time',
-  bienvenidoGenerico: 'Welcome to Stratium AI - Your financial partner in {pais}',
+  bienvenidoGenerico: 'Welcome to Stratium GLOBAL AI - Your financial partner in {pais}',
   
   // Contextual messages by country
   bienvenidoPais_CO: '🇨🇴 Let\'s take care of your business!',
@@ -496,7 +496,7 @@ const OVERRIDES = {
     ejemplo1: '"Do I need to issue a W-9 to clients?"',
     ejemplo2: '"What is the difference between 1099-NEC and 1099-K?"',
     ejemplo3: '"Do I need to collect sales tax for out-of-state sales?"',
-    bienvenidoPais: (pais) => `Welcome to Stratium AI - Your financial partner in the USA!`
+    bienvenidoPais: (pais) => `Welcome to Stratium GLOBAL AI - Your financial partner in the USA!`
   },
   
   // Reino Unido - contexto fiscal UK (normalizado a GB)
@@ -508,7 +508,7 @@ const OVERRIDES = {
     ejemplo1: '"Do I need to register for the VAT scheme?"',
     ejemplo2: '"What is the Making Tax Digital initiative?"',
     ejemplo3: '"How do I file my Self Assessment tax return?"',
-    bienvenidoPais: (pais) => `Welcome to Stratium AI - Your financial partner in the UK!`
+    bienvenidoPais: (pais) => `Welcome to Stratium GLOBAL AI - Your financial partner in the UK!`
   },
   
   // Alemania

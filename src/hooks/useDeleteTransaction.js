@@ -1,5 +1,5 @@
 // hooks/useDeleteTransaction.js
-// Módulo de eliminación atómica de transacciones - Stratium AI v2.3
+// Módulo de eliminación atómica de transacciones - Stratium GLOBAL AI v2.3
 
 import { useCallback } from 'react';
 import { db } from '../firebase';

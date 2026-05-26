@@ -4,25 +4,25 @@ const PUBLIC_KEY = 'TEST-f8557a31-daf6-40f9-b9ef-95990878ee8e';
 // Configuración de planes con precios en COP y USD
 const planesConfig = {
   starter: {
-    title: 'STRATIUM AI - Plan Starter',
+    title: 'STRATIUM GLOBAL AI - Plan Starter',
     priceCOP: 29900,
     priceUSD: 9.99,
     description: '10 escaneos/mes, ingreso manual, dashboard básico, alertas de riesgo'
   },
   pro: {
-    title: 'STRATIUM AI - Plan Pro',
+    title: 'STRATIUM GLOBAL AI - Plan Pro',
     priceCOP: 79900,
     priceUSD: 29.99,
     description: '30 escaneos/mes, reportes PDF, exportar CSV, comparativas, punto de equilibrio, rotación de inventario'
   },
   business: {
-    title: 'STRATIUM AI - Plan Business',
+    title: 'STRATIUM GLOBAL AI - Plan Business',
     priceCOP: 199900,
     priceUSD: 79.99,
     description: '120 escaneos/mes, auditoría forense de gastos, detección de sobrecostos, 3 usuarios'
   },
   elite: {
-    title: 'STRATIUM AI - Plan Elite',
+    title: 'STRATIUM GLOBAL AI - Plan Elite',
     priceCOP: 499900,
     priceUSD: 199.99,
     description: '300 escaneos/mes, radar de quiebra, alertas WhatsApp, certificado QR, 10 usuarios'

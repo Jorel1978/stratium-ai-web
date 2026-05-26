@@ -3,7 +3,7 @@ export default {
   // ============================================================
   // TITLES AND MAIN TEXTS
   // ============================================================
-  title: 'STRATIUM AI',
+  title: 'STRATIUM GLOBAL AI',
   subtitle: 'Cost Optimization Specialist & AI Financial Auditor',
   
   // ============================================================
@@ -94,7 +94,7 @@ export default {
   materialsPerUnit: 'Materials/Unit',
   delete: '🗑️',
   auditFullBatch: '🔍 Audit Full Batch (v2.4-International)',
-  footerText1: 'Stratium AI v2.4-International • CO • EN',
+  footerText1: 'Stratium GLOBAL AI v2.4-International • CO • EN',
   footerText2: 'Labor factor: 1.52x • Commission: 27.1% • Provision: $10,000/unit',
   footerText3: 'Smart financial auditing for real entrepreneurs',
   productionAudit: 'Production Audit',
@@ -324,7 +324,7 @@ export default {
   // ============================================================
   // LOGIN AND AUTHENTICATION
   // ============================================================
-  loginTitle: 'Welcome to STRATIUM AI',
+  loginTitle: 'Welcome to STRATIUM GLOBAL AI',
   loginSubtitle: 'Your AI Financial Assistant',
   email: 'Email',
   password: 'Password',
@@ -462,7 +462,68 @@ export default {
   manualTransactionEntry: 'Manual Transaction Entry',
   financialRecords: 'Financial Records',
   auditReport: 'Audit Report',
+
+  // ============================================================
+  // KEYS FOR DASHBOARD INSIGHTS (ADD)
+  // ============================================================
+  boneProducts: '🦴 Dead Stock',
+  noBoneProducts: 'No dead stock in inventory',
+  salesTrend: '📈 Sales Trend',
+  thisWeek: 'This week',
+  vsLastWeek: 'vs last week',
+  alertaCajaCritica: '🚨 ALERT! Your balance covers only {dias} days. Immediate action needed.',
+  alertaCajaBaja: '⚠️ Your balance covers only {dias} days. Need ${monto} to reach 5 days.',
+  alertaMargenBajo: '📉 Your net margin is {margen}%. Below the recommended 15%. Review your costs.',
+  alertaInactividad: '📢 You haven\'t recorded transactions for {dias} days.',
+  mensajePositivo: '✅ Everything is in order. Keep it up to maintain a healthy business.',
+  starProducts: '⭐ Top Performers',
+  noStarProducts: 'No top performers yet. Record more sales.',
+  starProductsTip: '⭐ Your top performer is "{producto}". Allocate marketing budget.',
+  boneProductsTip: '🦴 You have {cantidad} products without rotation. Review prices.',
+  lowMarginTip: '💰 Your margins are low. Review costs or selling prices.',
+  positiveMessage: '✅ Everything is going well. Keep it up.',
+  noSalesAlert: '📢 You haven\'t recorded sales yet. Activate your commercial strategy to start generating revenue.',
   
+  // ============================================================
+  // CORRECTED FINANCIAL TERMS
+  // ============================================================
+  grossMargin: 'Gross Margin',
+  cashBalance: 'Cash Balance',
+  cashOnHand: 'Cash on Hand',
+  deadStock: 'Dead Stock',
+  topPerformers: 'Top Performers',
+  businessFunds: '💰 Business funds',
+  personalFunds: '👤 Personal funds',
+  
+  // ============================================================
+  // CHART LEGEND
+  // ============================================================
+  salesLegend: 'Sales',
+  expensesLegend: 'Expenses',
+  purchasesLegend: 'Purchases',
+  capitalLegend: 'Capital',
+  profitLegend: 'Profit',
+
+"critical_products_title": "⚠️ Critical Products (Low Rotation / Bankruptcy Risk)",
+"no_critical_products": "✅ No stagnant products in inventory. Flow is optimal.",
+productDetail: "Product Detail",
+batchQuantity: "Batch Quantity",
+totalMfgHours: "Total Mfg Hours", 
+estimatedSellingPrice: "Estimated Selling Price",
+materialCostPerBatch: "Material Cost per Batch",
+hoursPlaceholder: "Hours",
+materialsPlaceholder: "Total materials",
+totalHoursTooltip: "Total hours to manufacture this product",
+totalMaterialsTooltip: "Total material cost for this product batch",
+suggestedStrategy: "SUGGESTED STRATEGY:",
+ideal50: "Ideal (50%)",
+phase30_40: "30 days (40%)",
+phase60_30: "60 days (30%)",
+phase90_10: "90 days (10%)",
+projectedDays: "projected coverage days",
+upgradeToBusiness: "Business/Elite",
+upgradeToContinue: "Renew to continue",
+
   // ============================================================
   // MISC
   // ============================================================

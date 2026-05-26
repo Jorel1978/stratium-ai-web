@@ -3,6 +3,7 @@ import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc, incr
 import { auditarOperacion } from '../logic/logicEngine';
 import { useEstrellaHueso } from '../hooks/useEstrellaHueso';
 import { useTranslation } from '../hooks/useTranslation';
+import AutocompleteInput from './AutocompleteInput';
 import { formatMoneyUniversal } from '../util/formatMoneyUniversal';
 
 const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProductoEnCatalogo, onSuccess, onError }) => {
@@ -24,8 +25,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
   const [validationError, setValidationError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [productos, setProductos] = useState([]);
-  const [productosFiltrados, setProductosFiltrados] = useState([]);
-  const [mostrarLista, setMostrarLista] = useState(false);
   const [infoProductoSeleccionado, setInfoProductoSeleccionado] = useState(null);
   const [productosCriticos, setProductosCriticos] = useState([]);
   const [productosEstrella, setProductosEstrella] = useState([]);
@@ -159,18 +158,26 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
     }
   };
 
-  // Cargar productos del catálogo
+  // ============================================================
+  // Cargar productos desde INVENTARIO (NO desde products)
+  // ============================================================
   useEffect(() => {
     const cargarProductos = async () => {
       if (!usuarioActual?.uid) return;
       try {
-        const q = query(collection(db, 'products'), where('userId', '==', usuarioActual.uid));
+        const q = query(collection(db, 'inventario'), where('userId', '==', usuarioActual.uid));
         const snapshot = await getDocs(q);
         const lista = [];
         snapshot.forEach(doc => {
-          lista.push({ id: doc.id, ...doc.data() });
+          const data = doc.data();
+          lista.push({ 
+            id: doc.id, 
+            nombre: data.producto,
+            ...data 
+          });
         });
         setProductos(lista);
+        console.log('📦 Productos cargados desde inventario:', lista.length);
         
         await cargarProductosAuditoria();
       } catch (error) {
@@ -179,41 +186,6 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
     };
     cargarProductos();
   }, [usuarioActual?.uid, db]);
-
-  // Filtrar productos según lo que escribe el usuario
-  const handleConceptoChange = async (e) => {
-    const value = e.target.value;
-    setFormData(prev => ({ ...prev, concepto: value }));
-    setValidationError(null);
-    setSuccessMessage(null);
-    setInfoProductoSeleccionado(null);
-    
-    if (value.length > 0) {
-      const filtrados = productos.filter(p => 
-        p.nombre.toLowerCase().includes(value.toLowerCase())
-      );
-      setProductosFiltrados(filtrados.slice(0, 10));
-      setMostrarLista(filtrados.length > 0);
-      
-      const productoExistente = filtrados.find(p => p.nombre.toLowerCase() === value.toLowerCase());
-      if (productoExistente) {
-        const info = await obtenerInfoProducto(productoExistente.nombre);
-        setInfoProductoSeleccionado(info);
-      }
-    } else {
-      setProductosFiltrados([]);
-      setMostrarLista(false);
-    }
-  };
-
-  const seleccionarProducto = async (producto) => {
-    setFormData(prev => ({ ...prev, concepto: producto.nombre }));
-    setMostrarLista(false);
-    setProductosFiltrados([]);
-    
-    const info = await obtenerInfoProducto(producto.nombre);
-    setInfoProductoSeleccionado(info);
-  };
 
   const getCategoria = (tipo) => {
     switch(tipo) {
@@ -250,208 +222,271 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
       fechaLimitePago: '',
       fechaVencimientoProducto: ''
     });
-    setMostrarLista(false);
-    setProductosFiltrados([]);
     setInfoProductoSeleccionado(null);
   };
 
+// Verificar límite de transacciones según plan
+const verificarLimiteTransacciones = async () => {
+  if (!usuarioActual?.uid) return true;
+  
+  const plan = usuarioActual.plan || 'starter';
+  
+  // Business y Elite no tienen límite
+  if (plan === 'business' || plan === 'elite') return true;
+  
+  // Calcular inicio del mes actual
+  const inicioMes = new Date();
+  inicioMes.setDate(1);
+  inicioMes.setHours(0, 0, 0, 0);
+  
+  const q = query(
+    collection(db, 'registros'),
+    where('userId', '==', usuarioActual.uid),
+    where('fecha', '>=', inicioMes)
+  );
+  const snapshot = await getDocs(q);
+  const transaccionesMes = snapshot.size;
+  
+  // Pro: 1000 transacciones/mes, Starter: 100 transacciones/mes
+  const limite = plan === 'pro' ? 1000 : 100;
+  
+  if (transaccionesMes >= limite) {
+    const mensaje = idioma === 'en'
+      ? `❌ You have reached the limit of ${limite} transactions for this month. Upgrade to Business for unlimited transactions.`
+      : `❌ Has alcanzado el límite de ${limite} transacciones de este mes. Actualiza a Business para transacciones ilimitadas.`;
+    setValidationError(mensaje);
+    return false;
+  }
+  
+  return true;
+};
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setValidationError(null);
-    setSuccessMessage(null);
+  e.preventDefault();
+  setLoading(true);
+  setValidationError(null);
+  setSuccessMessage(null);
 
-    try {
-      const montoNum = parseFloat(formData.monto);
-      const cantidadNum = parseInt(formData.cantidad);
-      
-      if (formData.tipo === 'compra' && formData.concepto) {
-        const productoParaAlerta = {
-          nombre: formData.concepto,
-          clasificacion: 'HUESO',
-          diasEnStock: 0
-        };
-        alertaCompraHueso(productoParaAlerta);
-      }
-      
-      if (isNaN(montoNum) || montoNum <= 0) {
-        setValidationError(t('montoInvalido') || '❌ El monto debe ser un número mayor a cero');
-        setLoading(false);
-        return;
-      }
-        
-      const tipoFlujo = getTipoFlujo(formData.tipo);
-      const categoria = getCategoria(formData.tipo);
-      const costoUnitario = montoNum / cantidadNum;
-      
-      const tipoTexto = {
-        gasto: t('gasto') || 'Gasto', ingreso: t('ingreso') || 'Ingreso', compra: t('compra') || 'Compra', venta: t('venta') || 'Venta'
+  try {
+    const montoNum = parseFloat(formData.monto);
+    const cantidadNum = parseInt(formData.cantidad);
+    
+    if (formData.tipo === 'compra' && formData.concepto) {
+      const productoParaAlerta = {
+        nombre: formData.concepto,
+        clasificacion: 'HUESO',
+        diasEnStock: 0
       };
+      alertaCompraHueso(productoParaAlerta);
+    }
+    
+    if (isNaN(montoNum) || montoNum <= 0) {
+      setValidationError(t('montoInvalido') || '❌ El monto debe ser un número mayor a cero');
+      setLoading(false);
+      return;
+    }
       
-      let textoCompleto = `${tipoTexto[formData.tipo]}: ${cantidadNum}x ${formData.concepto} por ${montoNum}`;
-      
-      if (formData.tercero) {
-        textoCompleto += ` - ${formData.tipo === 'compra' ? 'Proveedor' : 'Cliente'}: ${formData.tercero}`;
-      }
-      
-      if (formData.tipoPago === 'credito' && formData.fechaLimitePago) {
-        textoCompleto += ` (Crédito, vence: ${formData.fechaLimitePago})`;
-      }
-      
-      const auditoria = auditarOperacion(
-        textoCompleto,
-        montoNum,
-        { saldoCaja: saldoActual },
-        idioma
-      );
-
-      if (!auditoria.validado) {
-        setValidationError(auditoria.mensajeValidacion);
-        setLoading(false);
-        return;
-      }
-
-      const esAportePersonal = (tipoFlujo === 'egreso' && formData.fuentePago === 'personal');
-      const esGastoNegocio = (tipoFlujo === 'egreso' && formData.fuentePago === 'negocio');
-
-      if (esGastoNegocio && saldoActual < montoNum) {
-        setValidationError(t('saldoInsuficiente', { saldo: formatMoney(saldoActual, idioma), monto: formatMoney(montoNum, idioma) }));
-        setLoading(false);
-        return;
-      }
-
-      if (formData.tipo === 'venta') {
+    const tipoFlujo = getTipoFlujo(formData.tipo);
+    const categoria = getCategoria(formData.tipo);
+    const costoUnitario = montoNum / cantidadNum;
+    
+    // ✅ LIMITAR PRODUCTOS EN INVENTARIO (STARTER) - SOLO PARA COMPRAS
+    if (formData.tipo === 'compra') {
+      const plan = usuarioActual?.plan || 'starter';
+      if (plan === 'starter') {
         const inventarioRef = collection(db, 'inventario');
-        const qInventario = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
-        const snapshotInventario = await getDocs(qInventario);
+        const q = query(inventarioRef, where('userId', '==', usuarioActual.uid));
+        const snapshot = await getDocs(q);
+        const cantidadProductos = snapshot.size;
         
-        let stockActual = 0;
-        if (!snapshotInventario.empty) {
-          stockActual = snapshotInventario.docs[0].data().cantidad;
-        }
+        // Verificar si el producto ya existe
+        const productoQuery = query(inventarioRef, 
+          where('producto', '==', formData.concepto), 
+          where('userId', '==', usuarioActual.uid)
+        );
+        const productoSnapshot = await getDocs(productoQuery);
+        const productoExiste = !productoSnapshot.empty;
         
-        if (stockActual < cantidadNum) {
-          setValidationError(t('stockInsuficiente', { stock: stockActual, solicitado: cantidadNum }));
+        // Starter: máximo 20 productos
+        if (!productoExiste && cantidadProductos >= 20) {
+          setValidationError('❌ Has alcanzado el límite de 20 productos en inventario. Actualiza a Pro o Business.');
           setLoading(false);
           return;
         }
       }
-
-      if (formData.tipo === 'compra' && guardarProductoEnCatalogo) {
-        await guardarProductoEnCatalogo(formData.concepto, usuarioActual.uid);
-      }
-
-      const userRef = doc(db, 'usuarios', usuarioActual.uid);
-      
-      if (esAportePersonal) {
-        await updateDoc(userRef, {
-          deudaConDueño: increment(montoNum),
-          aportesPersonales: increment(montoNum)
-        });
-        setValidationError(t('advertenciaPersonal'));
-        setTimeout(() => setValidationError(null), 5000);
-      } else if (esGastoNegocio) {
-        await updateDoc(userRef, {
-          saldoCaja: increment(-montoNum)
-        });
-      }
-
-      const registroData = {
-        texto: textoCompleto,
-        concepto: formData.concepto,
-        valor: montoNum,
-        tipo: tipoFlujo,
-        categoria: categoria,
-        emoji: formData.tipo === 'compra' ? '📦' : formData.tipo === 'venta' ? '💰' : auditoria.emoji,
-        recomendacion: esAportePersonal 
-          ? t('aportePersonalRecomendacion') || '💰 Aporte de capital personal. El negocio te debe este dinero.'
-          : auditoria.recomendacion,
-        cantidad: cantidadNum,
-        costoUnitario: costoUnitario,
-        fecha: new Date(formData.fecha + 'T12:00:00'),
-        serverTimestamp: serverTimestamp(),
-        userId: usuarioActual?.uid,
-        metodo: 'manual',
-        fechaRegistro: formData.fecha,
-        tipoOperacion: formData.tipo,
-        fuentePago: formData.fuentePago,
-        esAportePersonal: esAportePersonal,
-        tercero: formData.tercero || null,
-        tipoPago: formData.tipoPago,
-        fechaLimitePago: formData.tipoPago === 'credito' ? formData.fechaLimitePago : null,
-        fechaVencimientoProducto: (formData.tipo === 'compra' && formData.fechaVencimientoProducto) ? formData.fechaVencimientoProducto : null
-      };
-      
-      await addDoc(collection(db, 'registros'), registroData);
-
-      if (formData.tipo === 'compra' || formData.tipo === 'venta') {
-        const inventarioRef = collection(db, 'inventario');
-        const qInv = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
-        const snapshotInv = await getDocs(qInv);
-        
-        if (snapshotInv.empty) {
-          const inventarioData = {
-            producto: formData.concepto,
-            cantidad: formData.tipo === 'compra' ? cantidadNum : -cantidadNum,
-            costoUnitario: costoUnitario,
-            costoTotal: montoNum,
-            userId: usuarioActual.uid,
-            fechaActualizacion: serverTimestamp()
-          };
-          
-          if (formData.tipo === 'compra' && formData.fechaVencimientoProducto) {
-            inventarioData.fechaVencimiento = formData.fechaVencimientoProducto;
-            inventarioData.alertaVencimientoEnviada = false;
-          }
-          
-          await addDoc(inventarioRef, inventarioData);
-        } else {
-          const inventarioDoc = snapshotInv.docs[0];
-          const dataActual = inventarioDoc.data();
-          let nuevaCantidad;
-          let nuevoCostoTotal;
-          let nuevoCostoUnitario;
-          
-          if (formData.tipo === 'compra') {
-            nuevaCantidad = dataActual.cantidad + cantidadNum;
-            nuevoCostoTotal = (dataActual.cantidad * dataActual.costoUnitario) + montoNum;
-            nuevoCostoUnitario = nuevoCostoTotal / nuevaCantidad;
-          } else {
-            nuevaCantidad = dataActual.cantidad - cantidadNum;
-            nuevoCostoTotal = dataActual.costoTotal - montoNum;
-            nuevoCostoUnitario = dataActual.costoUnitario;
-          }
-          
-          const updateData = {
-            cantidad: nuevaCantidad,
-            costoTotal: nuevoCostoTotal,
-            costoUnitario: nuevoCostoUnitario,
-            fechaActualizacion: serverTimestamp()
-          };
-          
-          if (formData.tipo === 'compra' && formData.fechaVencimientoProducto) {
-            updateData.fechaVencimiento = formData.fechaVencimientoProducto;
-            updateData.alertaVencimientoEnviada = false;
-          }
-          
-          await updateDoc(doc(db, 'inventario', inventarioDoc.id), updateData);
-        }
-      }
-
-      setSuccessMessage(t('exito') || '✅ Movimiento registrado exitosamente');
-      limpiarFormulario();
-      await cargarProductosAuditoria();
-      
-      if (onSuccess) onSuccess();
-
-    } catch (error) {
-      console.error('Error guardando registro:', error);
-      setValidationError(`${t('errorGeneral') || 'Error'}: ${error.message}`);
-      if (onError) onError(error);
-    } finally {
-      setLoading(false);
     }
-  };
+    
+    const tipoTexto = {
+      gasto: t('gasto') || 'Gasto', 
+      ingreso: t('ingreso') || 'Ingreso', 
+      compra: t('compraInventario') || 'Compra', 
+      venta: t('venta') || 'Venta'
+    };
+    
+    let textoCompleto = `${tipoTexto[formData.tipo]}: ${cantidadNum}x ${formData.concepto} por ${montoNum}`;
+    
+    if (formData.tercero) {
+      textoCompleto += ` - ${formData.tipo === 'compra' ? 'Proveedor' : 'Cliente'}: ${formData.tercero}`;
+    }
+    
+    if (formData.tipoPago === 'credito' && formData.fechaLimitePago) {
+      textoCompleto += ` (Crédito, vence: ${formData.fechaLimitePago})`;
+    }
+    
+    const auditoria = auditarOperacion(
+      textoCompleto,
+      montoNum,
+      { saldoCaja: saldoActual },
+      idioma
+    );
+
+    if (!auditoria.validado) {
+      setValidationError(auditoria.mensajeValidacion);
+      setLoading(false);
+      return;
+    }
+
+    const esAportePersonal = (tipoFlujo === 'egreso' && formData.fuentePago === 'personal');
+    const esGastoNegocio = (tipoFlujo === 'egreso' && formData.fuentePago === 'negocio');
+
+    if (esGastoNegocio && saldoActual < montoNum) {
+      setValidationError(t('saldoInsuficiente', { saldo: formatMoney(saldoActual, idioma), monto: formatMoney(montoNum, idioma) }));
+      setLoading(false);
+      return;
+    }
+
+    if (formData.tipo === 'venta') {
+      const inventarioRef = collection(db, 'inventario');
+      const qInventario = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
+      const snapshotInventario = await getDocs(qInventario);
+      
+      let stockActual = 0;
+      if (!snapshotInventario.empty) {
+        stockActual = snapshotInventario.docs[0].data().cantidad;
+      }
+      
+      if (stockActual < cantidadNum) {
+        setValidationError(t('stockInsuficiente', { stock: stockActual, solicitado: cantidadNum }));
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (formData.tipo === 'compra' && guardarProductoEnCatalogo) {
+      await guardarProductoEnCatalogo(formData.concepto, usuarioActual.uid);
+    }
+
+    const userRef = doc(db, 'usuarios', usuarioActual.uid);
+    
+    if (esAportePersonal) {
+      await updateDoc(userRef, {
+        deudaConDueño: increment(montoNum),
+        aportesPersonales: increment(montoNum)
+      });
+      setValidationError(t('advertenciaPersonal'));
+      setTimeout(() => setValidationError(null), 5000);
+    } else if (esGastoNegocio) {
+      await updateDoc(userRef, {
+        saldoCaja: increment(-montoNum)
+      });
+    }
+
+    const registroData = {
+      texto: textoCompleto,
+      concepto: formData.concepto,
+      valor: montoNum,
+      tipo: tipoFlujo,
+      categoria: categoria,
+      emoji: formData.tipo === 'compra' ? '📦' : formData.tipo === 'venta' ? '💰' : auditoria.emoji,
+      recomendacion: esAportePersonal 
+        ? t('aportePersonalRecomendacion') || '💰 Aporte de capital personal. El negocio te debe este dinero.'
+        : auditoria.recomendacion,
+      cantidad: cantidadNum,
+      costoUnitario: costoUnitario,
+      fecha: new Date(formData.fecha + 'T12:00:00'),
+      serverTimestamp: serverTimestamp(),
+      userId: usuarioActual?.uid,
+      metodo: 'manual',
+      fechaRegistro: formData.fecha,
+      tipoOperacion: formData.tipo,
+      fuentePago: formData.fuentePago,
+      esAportePersonal: esAportePersonal,
+      tercero: formData.tercero || null,
+      tipoPago: formData.tipoPago,
+      fechaLimitePago: formData.tipoPago === 'credito' ? formData.fechaLimitePago : null,
+      fechaVencimientoProducto: (formData.tipo === 'compra' && formData.fechaVencimientoProducto) ? formData.fechaVencimientoProducto : null
+    };
+    
+    await addDoc(collection(db, 'registros'), registroData);
+
+    if (formData.tipo === 'compra' || formData.tipo === 'venta') {
+      const inventarioRef = collection(db, 'inventario');
+      const qInv = query(inventarioRef, where('producto', '==', formData.concepto), where('userId', '==', usuarioActual.uid));
+      const snapshotInv = await getDocs(qInv);
+      
+      if (snapshotInv.empty) {
+        const inventarioData = {
+          producto: formData.concepto,
+          cantidad: formData.tipo === 'compra' ? cantidadNum : -cantidadNum,
+          costoUnitario: costoUnitario,
+          costoTotal: montoNum,
+          userId: usuarioActual.uid,
+          fechaActualizacion: serverTimestamp()
+        };
+        
+        if (formData.tipo === 'compra' && formData.fechaVencimientoProducto) {
+          inventarioData.fechaVencimiento = formData.fechaVencimientoProducto;
+          inventarioData.alertaVencimientoEnviada = false;
+        }
+        
+        await addDoc(inventarioRef, inventarioData);
+      } else {
+        const inventarioDoc = snapshotInv.docs[0];
+        const dataActual = inventarioDoc.data();
+        let nuevaCantidad;
+        let nuevoCostoTotal;
+        let nuevoCostoUnitario;
+        
+        if (formData.tipo === 'compra') {
+          nuevaCantidad = dataActual.cantidad + cantidadNum;
+          nuevoCostoTotal = (dataActual.cantidad * dataActual.costoUnitario) + montoNum;
+          nuevoCostoUnitario = nuevoCostoTotal / nuevaCantidad;
+        } else {
+          nuevaCantidad = dataActual.cantidad - cantidadNum;
+          nuevoCostoTotal = dataActual.costoTotal - montoNum;
+          nuevoCostoUnitario = dataActual.costoUnitario;
+        }
+        
+        const updateData = {
+          cantidad: nuevaCantidad,
+          costoTotal: nuevoCostoTotal,
+          costoUnitario: nuevoCostoUnitario,
+          fechaActualizacion: serverTimestamp()
+        };
+        
+        if (formData.tipo === 'compra' && formData.fechaVencimientoProducto) {
+          updateData.fechaVencimiento = formData.fechaVencimientoProducto;
+          updateData.alertaVencimientoEnviada = false;
+        }
+        
+        await updateDoc(doc(db, 'inventario', inventarioDoc.id), updateData);
+      }
+    }
+
+    setSuccessMessage(t('exito') || '✅ Movimiento registrado exitosamente');
+    limpiarFormulario();
+    await cargarProductosAuditoria();
+    
+    if (onSuccess) onSuccess();
+
+  } catch (error) {
+    console.error('Error guardando registro:', error);
+    setValidationError(`${t('errorGeneral') || 'Error'}: ${error.message}`);
+    if (onError) onError(error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="bg-[#1e293b] rounded-2xl p-6 mb-8 border border-blue-900/30">
@@ -474,17 +509,18 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
 
       {/* Productos Críticos y Estrella */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        {/* Productos Críticos (HUESO) */}
         <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
-          <h4 className="text-red-400 text-sm font-bold mb-2">{t('productosCriticos') || '🦴 Productos Críticos (HUESO)'}</h4>
+          <h4 className="text-red-400 text-sm font-bold mb-2">{t('critical_products_title')}</h4>
           {productosCriticos.length === 0 ? (
-            <p className="text-gray-500 text-xs">{t('sinProductosCriticos') || '✅ No hay productos HUESO en inventario'}</p>
+            <p className="text-gray-500 text-xs">{t('no_critical_products')}</p>
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto">
               {productosCriticos.map((p, idx) => {
                 const precioLiq = calcularPrecioLiquidacion(p.costoUnitario, p.diasEnStock);
                 return (
                   <div key={idx} className="border-b border-red-500/20 pb-2">
-                    <p className="text-white text-sm font-medium">{p.nombre}</p>
+                    <p className="text-white text-sm font-medium">📉 {p.nombre}</p>
                     <p className="text-gray-400 text-xs">📦 {p.cantidad} und | ⏱️ {p.diasEnStock} {t('diasSinRotacion') || 'días sin rotación'}</p>
                     {precioLiq && (
                       <p className="text-cyan-400 text-xs">{t('precioSugerido') || '💰 Sugerido'}: {formatMoney(precioLiq.precio, idioma)} ({precioLiq.estrategia})</p>
@@ -496,6 +532,7 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
           )}
         </div>
 
+        {/* Productos Estrella */}
         <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-3">
           <h4 className="text-green-400 text-sm font-bold mb-2">{t('productosEstrella') || '⭐ Productos Estrella'}</h4>
           {productosEstrella.length === 0 ? (
@@ -572,8 +609,8 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
                 onChange={(e) => setFormData(prev => ({ ...prev, fuentePago: e.target.value }))}
                 className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
               >
-                <option value="negocio">{t('fuenteNegocio') || '💰 Fondos del negocio'}</option>
-                <option value="personal">{t('fuentePersonal') || '👤 Fondos personales (Inyección de capital)'}</option>
+                <option value="negocio">{t('businessFunds') || '💰 Fondos del negocio'}</option>
+                <option value="personal">{t('personalFunds') || '👤 Fondos personales (Inyección de capital)'}</option>
               </select>
             </div>
           )}
@@ -662,40 +699,28 @@ const RegistroManual = ({ usuarioActual, idioma, saldoActual = 0, guardarProduct
             </div>
           )}
 
-          <div className="md:col-span-2 relative">
+          {/* ✅ CAMBIO PRINCIPAL: Usar AutocompleteInput en lugar del input normal */}
+          <div className="md:col-span-2">
             <label className="block text-gray-400 text-sm mb-1">{t('producto') || 'Producto'}</label>
-            <input
-              type="text"
-              name="concepto"
+            <AutocompleteInput
               value={formData.concepto}
-              onChange={handleConceptoChange}
-              onFocus={() => {
-                if (formData.concepto.length > 0 && productosFiltrados.length > 0) {
-                  setMostrarLista(true);
-                }
+              onChange={(val) => {
+                setFormData(prev => ({ ...prev, concepto: val }));
+                setValidationError(null);
+                setSuccessMessage(null);
+                setInfoProductoSeleccionado(null);
               }}
-              onBlur={() => {
-                setTimeout(() => setMostrarLista(false), 200);
-              }}
+              options={productos.map(p => p.nombre).filter(Boolean)}
               placeholder={t('ejemploConcepto') || 'Escribe el nombre del producto...'}
               className="w-full bg-[#0f172a] border border-blue-900/20 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-              required
-              autoComplete="off"
+              onSelect={async (selected) => {
+                const productoSeleccionado = productos.find(p => p.nombre === selected);
+                if (productoSeleccionado) {
+                  const info = await obtenerInfoProducto(productoSeleccionado.nombre);
+                  setInfoProductoSeleccionado(info);
+                }
+              }}
             />
-            
-            {mostrarLista && productosFiltrados.length > 0 && (
-              <div className="absolute z-10 w-full bg-[#0f172a] border border-blue-900/30 rounded-lg mt-1 max-h-48 overflow-y-auto">
-                {productosFiltrados.map(producto => (
-                  <div
-                    key={producto.id}
-                    onClick={() => seleccionarProducto(producto)}
-                    className="px-4 py-2 hover:bg-cyan-500/20 cursor-pointer text-white text-sm border-b border-blue-900/20 last:border-0"
-                  >
-                    {producto.nombre}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {formData.tipo === 'compra' && (

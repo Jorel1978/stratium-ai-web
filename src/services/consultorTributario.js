@@ -1,5 +1,5 @@
 // src/services/consultorTributario.js
-// Consultor tributario para Stratium AI (RAG ligero con validaciones de cumplimiento)
+// Consultor tributario para Stratium GLOBAL AI (RAG ligero con validaciones de cumplimiento)
 // ⚠️ ADVERTENCIA: Este sistema NO reemplaza el consejo de un contador certificado
 
 // ============================================================
@@ -194,11 +194,11 @@ export const responderDudaTributaria = (preguntaUsuario, paisCode = 'CO', idioma
       encontrado: true,
       bloqueado: true,
       respuesta: idioma === 'en'
-        ? '⚠️ I cannot provide advice on tax evasion or avoidance. Stratium AI promotes fiscal responsibility and legal compliance. Please rephrase your question with legal intent.'
-        : '⚠️ No puedo proporcionar consejos sobre evasión o elusión fiscal. Stratium AI promueve la responsabilidad fiscal y el cumplimiento legal. Por favor, reformula tu pregunta con una intención legal.',
+        ? '⚠️ I cannot provide advice on tax evasion or avoidance. Stratium GLOBAL AI promotes fiscal responsibility and legal compliance. Please rephrase your question with legal intent.'
+        : '⚠️ No puedo proporcionar consejos sobre evasión o elusión fiscal. Stratium GLOBAL AI promueve la responsabilidad fiscal y el cumplimiento legal. Por favor, reformula tu pregunta con una intención legal.',
       disclaimer: idioma === 'en'
-        ? 'Stratium AI is a support tool and does NOT replace the advice of a certified tax professional.'
-        : 'Stratium AI es una herramienta de apoyo y NO reemplaza el consejo de un profesional tributario certificado.',
+        ? 'Stratium GLOBAL AI is a support tool and does NOT replace the advice of a certified tax professional.'
+        : 'Stratium GLOBAL AI es una herramienta de apoyo y NO reemplaza el consejo de un profesional tributario certificado.',
       ultimaRevision: new Date().toISOString().split('T')[0]
     };
   }
@@ -245,7 +245,7 @@ export const responderDudaTributaria = (preguntaUsuario, paisCode = 'CO', idioma
       ejemplo: infoEncontrada.ejemplo,
       ultimaRevision: infoEncontrada.ultimaRevision,
       vigencia: conocimientoPais.vigencia,
-      disclaimer: `⚠️ ADVERTENCIA LEGAL: Stratium AI es una herramienta de apoyo financiero y NO sustituye el consejo de un contador o abogado certificado. Las leyes tributarias cambian constantemente. La información presentada tiene vigencia hasta ${conocimientoPais.ultimaRevision}. Para casos específicos, consulta con ${conocimientoPais.entidadReguladora} o un profesional de confianza.`,
+      disclaimer: `⚠️ ADVERTENCIA LEGAL: Stratium GLOBAL AI es una herramienta de apoyo financiero y NO sustituye el consejo de un contador o abogado certificado. Las leyes tributarias cambian constantemente. La información presentada tiene vigencia hasta ${conocimientoPais.ultimaRevision}. Para casos específicos, consulta con ${conocimientoPais.entidadReguladora} o un profesional de confianza.`,
       nivelConfianza: 'MEDIO - Solo para orientación, no para decisiones críticas'
     };
   }
@@ -261,8 +261,8 @@ export const responderDudaTributaria = (preguntaUsuario, paisCode = 'CO', idioma
       : 'No estoy seguro de esa duda fiscal específica. Las regulaciones tributarias varían por país y cambian frecuentemente.',
     sugerencias: preguntasSugeridas,
     disclaimer: idioma === 'en'
-      ? 'Stratium AI is a support tool and does NOT replace the advice of a certified tax professional.'
-      : 'Stratium AI es una herramienta de apoyo y NO reemplaza el consejo de un profesional tributario certificado.',
+      ? 'Stratium GLOBAL AI is a support tool and does NOT replace the advice of a certified tax professional.'
+      : 'Stratium Global AI es una herramienta de apoyo y NO reemplaza el consejo de un profesional tributario certificado.',
     ultimaRevision: new Date().toISOString().split('T')[0]
   };
 };

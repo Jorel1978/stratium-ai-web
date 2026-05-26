@@ -555,8 +555,7 @@ export const procesarXML = onRequest({
 export const healthCheck = onRequest({ cors: true }, (req, res) => {
     res.status(200).json({
         status: 'OK',
-        service: 'Stratium AI - Procesador XML',
+        service: 'Stratium Global AI - Procesador XML',
         timestamp: new Date().toISOString()
     });
 });
-

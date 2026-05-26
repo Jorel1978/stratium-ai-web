@@ -258,7 +258,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
       
       let mensajeBienvenida = '';
       if (idioma === 'es') {
-        mensajeBienvenida = `🎉 **¡Bienvenido a STRATIUM AI!**\n\n`;
+        mensajeBienvenida = `🎉 **¡Bienvenido a STRATIUM GLOBAL AI!**\n\n`;
         mensajeBienvenida += `He analizado la configuración de tu negocio:\n\n`;
         mensajeBienvenida += `📦 **Inventario:** ${totalProductos} productos con un costo total de ${formatearMoneda(totalInventarioCosto)}\n`;
         mensajeBienvenida += `💰 **Capital invertido:** ${formatearMoneda(capitalInvertido)}\n`;
@@ -277,7 +277,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
         mensajeBienvenida += `• 📷 Escanea facturas de compras\n`;
         mensajeBienvenida += `• 💬 Pregúntame "¿Cómo estoy?" para análisis detallado`;
       } else {
-        mensajeBienvenida = `🎉 **Welcome to STRATIUM AI!**\n\n`;
+        mensajeBienvenida = `🎉 **Welcome to STRATIUM GLOBAL AI!**\n\n`;
         mensajeBienvenida += `I have analyzed your business setup:\n\n`;
         mensajeBienvenida += `📦 **Inventory:** ${totalProductos} products with a total cost of ${formatearMoneda(totalInventarioCosto)}\n`;
         mensajeBienvenida += `💰 **Invested capital:** ${formatearMoneda(capitalInvertido)}\n`;
@@ -639,7 +639,7 @@ const SupportBot = ({ usuarioActual, idioma, plan, moneda, resumenFinanciero, di
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && !diagnosticoBienvenida && (
               <div className="text-center text-gray-500 mt-8">
-                <p>🤖 {idioma === 'es' ? 'Hola, soy tu asistente IA de STRATIUM AI' : 'Hello, I am your AI assistant from STRATIUM AI'}</p>
+                <p>🤖 {idioma === 'es' ? 'Hola, soy tu asistente IA de STRATIUM GLOBAL AI' : 'Hello, I am your AI assistant from STRATIUM GLOBAL AI'}</p>
                 <p className="text-sm mt-2">{idioma === 'es' ? 'Pregúntame sobre finanzas, costos o cómo usar la plataforma' : 'Ask me about finances, costs, or how to use the platform'}</p>
                 <p className="text-xs text-cyan-400 mt-4">💡 {idioma === 'es' ? `Plan actual: ${planSeguro.toUpperCase()} - ${limiteMensajes} mensajes/mes` : `Current plan: ${planSeguro.toUpperCase()} - ${limiteMensajes} messages/month`}</p>
                 {!cargandoCreditos && (

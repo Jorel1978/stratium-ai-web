@@ -26,7 +26,6 @@ export const limpiarNumeroInternacional = (valor) => {
     let strValor = String(valor).trim();
     if (!strValor) return 0.0;
     
-    // ✅ CORRECCIÓN 1: Eliminar símbolos monetarios globalmente (USD, $, €, £, COP)
     strValor = strValor.replace(/[A-Za-z\s\$€£¥]/g, '');
     
     let strLimpio;
@@ -80,7 +79,6 @@ export const limpiarNumero = (valor) => {
     let texto = String(valor).trim();
     if (!texto) return 0.0;
     
-    // ✅ CORRECCIÓN 1: Eliminar símbolos monetarios globalmente
     texto = texto.replace(/[A-Za-z\s\$€£¥]/g, '');
     
     if (texto.includes(',') && !texto.includes('.')) {
@@ -148,7 +146,6 @@ export const procesarCosteo = ({ materiales, horas, valorHora, transporte, preci
         const utilidadNeta = precioVenta - costoTotalOperativo;
         const margenNeto = (utilidadNeta / precioVenta) * 100;
         
-        // ✅ CORRECCIÓN 2: Mensajes bilingües
         const dictamen = lang === 'es' 
             ? (margenNeto < 20 
                 ? `⚠️ ALERTA: El margen es de ${margenNeto.toFixed(1)}%. Estás trabajando para cubrir gastos. Sube el precio o reduce el tiempo de producción.`
@@ -183,28 +180,24 @@ export const validarOperacion = (tipo, monto, concepto, saldoCajaActual, lang = 
     const tipoUpper = tipo.toUpperCase();
     const saldo = parseFloat(saldoCajaActual) || 0;
     
-    // ✅ CORRECCIÓN: ADVERTENCIA (no bloqueo) - permite registrar aunque supere el saldo
     if (tipoUpper === 'EGRESO' && montoNum > saldo) {
         const mensaje = lang === 'es'
             ? `⚠️ ADVERTENCIA: Este gasto de ${formatMoney(montoNum, lang)} supera tu saldo actual (${formatMoney(saldo, lang)}). Asegúrate de tener fondos suficientes.`
             : `⚠️ WARNING: This expense of ${formatMoney(montoNum, lang)} exceeds your current balance (${formatMoney(saldo, lang)}). Make sure you have sufficient funds.`;
         return {
-            aprobado: true,  // ✅ Cambiado a true (permite el registro)
+            aprobado: true,
             mensaje: mensaje
         };
     }
     
-    // ✅ CORRECCIÓN CRÍTICA: Detección de conceptos vagos (con plurales y frases cortas)
     const conceptosVagos = ["varios", "cosa", "pago", "gastos", "etc", "x", "varios", "thing", "payment", "stuff", "expense", "gasto", "cosas", "pagoss", "gastoss"];
     const conceptoLower = concepto ? concepto.toLowerCase().trim() : '';
     
-    // Comprobar si el concepto ES una palabra vaga o EMPIEZA por una palabra vaga muy corta (menos de 7 caracteres)
     const esVago = conceptosVagos.some(vago => 
         conceptoLower === vago || 
         (conceptoLower.startsWith(vago) && conceptoLower.length < 8)
     );
     
-    // También detectar si el concepto tiene menos de 4 caracteres (ej: "ok", "si", "no", "ya")
     const esDemasiadoCorto = conceptoLower.length < 4 && conceptoLower.length > 0;
     
     if (!conceptoLower || esVago || esDemasiadoCorto) {
@@ -391,7 +384,6 @@ export const auditarOperacion = (texto, valor, contexto = {}, lang = 'es') => {
  * @returns {Object} - Días en stock y fecha de referencia
  */
 const calcularDiasEnStock = (producto, movimientos, inventarioItem) => {
-    // Buscar ventas del producto
     const ventasProducto = movimientos.filter(m => 
         m.tipo === 'ingreso' && 
         m.concepto?.toLowerCase() === producto.toLowerCase()
@@ -400,14 +392,12 @@ const calcularDiasEnStock = (producto, movimientos, inventarioItem) => {
     let diasEnStock = null;
     let fechaReferencia = null;
     
-    // Si hay ventas, calcular días desde la última venta
     if (ventasProducto.length > 0) {
         const ultimaVenta = new Date(Math.max(...ventasProducto.map(v => new Date(v.fecha))));
         const hoy = new Date();
         diasEnStock = Math.floor((hoy - ultimaVenta) / (1000 * 60 * 60 * 24));
         fechaReferencia = ultimaVenta;
     } 
-    // Si no hay ventas, usar fecha de registro del producto
     else if (inventarioItem?.fechaRegistro || inventarioItem?.fechaActualizacion) {
         const fechaRegistro = inventarioItem.fechaRegistro?.toDate?.() || 
                               inventarioItem.fechaActualizacion?.toDate?.() || 
@@ -491,7 +481,6 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
     const totalGastos = gastos.reduce((s, m) => s + (m.valor || 0), 0);
     const saldoActual = totalVentas - totalGastos;
     
-    // GASTOS DIARIOS PROMEDIO Y OXÍGENO FINANCIERO
     const gastoDiarioPromedio = totalGastos / 30;
     let diasOxigeno = 0;
     
@@ -505,7 +494,7 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
     }
     
     // ============================================================
-    // 2. ALERTAS DE PRODUCTOS CON BAJA ROTACIÓN (CORREGIDO)
+    // 2. ALERTAS DE PRODUCTOS CON BAJA ROTACIÓN
     // ============================================================
     const alertasProductos = [];
     const productosConVentas = new Set();
@@ -514,7 +503,6 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         if (v.concepto) productosConVentas.add(v.concepto.toLowerCase());
     });
     
-    // Recorrer inventario real
     const inventarioLocal = inventario.length > 0 ? inventario : [];
     
     for (const item of inventarioLocal) {
@@ -524,10 +512,8 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         
         if (!nombreOriginal || cantidad <= 0) continue;
         
-        // Calcular días en stock usando la nueva función
         const { diasEnStock, fechaReferencia, tieneVentas } = calcularDiasEnStock(nombreOriginal, movimientos, item);
         
-        // Solo alertar si tiene más de 30 días en stock y hay stock disponible
         if (diasEnStock !== null && diasEnStock > 30 && cantidad > 0) {
             const { mensaje, tieneAlerta, rangoMin, rangoMax, porcentajeMin, porcentajeMax, tipo } = calcularPrecioSugerido(costoUnitario, diasEnStock, lang);
             
@@ -618,9 +604,10 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         };
     }
     
-    // 6. RECOMENDACIONES ESTRATÉGICAS
+    // 6. RECOMENDACIONES ESTRATÉGICAS (CORREGIDO)
     const recomendaciones = [];
     
+    // ✅ CORRECCIÓN CRÍTICA: Usar totalVentas correctamente
     const noHayVentas = totalVentas === 0;
     
     if (noHayVentas && saldoActual < 0) {
@@ -638,7 +625,7 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
         recomendaciones.push(rec);
     }
     
-    // Recomendaciones específicas por producto (más potentes)
+    // Recomendaciones específicas por producto
     const productosConProblemas = alertasProductos.slice(0, 3);
     for (const producto of productosConProblemas) {
         if (producto.tipoSugerencia === 'RECUPERACION') {
@@ -734,7 +721,6 @@ export const analizarSaludFinanciera = (movimientos, inventario = [], config = {
  * @returns {Object} - Alertas de sobrecostos y ahorro potencial
  */
 export const auditarSobrecostosProveedores = (movimientos, inventario, plan, lang = 'es') => {
-  // Solo para Business y Elite
   if (plan !== 'business' && plan !== 'elite') {
     const mensaje = lang === 'es'
       ? 'Actualiza a Business o Elite para auditoría de proveedores'
@@ -745,7 +731,6 @@ export const auditarSobrecostosProveedores = (movimientos, inventario, plan, lan
   const alertas = [];
   const proveedores = {};
   
-  // ✅ CORRECCIÓN 3: Cambiar 'INVENTARIO' por 'directo' o 'Directo'
   movimientos.forEach(m => {
     const categoriaGasto = m.categoria?.toLowerCase() || '';
     if (m.tipo === 'egreso' && (categoriaGasto === 'directo' || categoriaGasto === 'compra' || categoriaGasto === 'inventario') && m.proveedor) {
@@ -765,7 +750,6 @@ export const auditarSobrecostosProveedores = (movimientos, inventario, plan, lan
     }
   });
   
-  // Analizar tendencias de precios
   Object.keys(proveedores).forEach(key => {
     const data = proveedores[key];
     if (data.precios.length >= 2) {
@@ -774,7 +758,7 @@ export const auditarSobrecostosProveedores = (movimientos, inventario, plan, lan
       
       if (precioActual > precioAnterior) {
         const incremento = ((precioActual - precioAnterior) / precioAnterior) * 100;
-        if (incremento > 5) { // Alertar si subió más del 5%
+        if (incremento > 5) {
           const mensaje = lang === 'es'
             ? `⚠️ ${data.proveedor} subió el precio de "${data.producto}" de ${formatMoney(precioAnterior, lang)} a ${formatMoney(precioActual, lang)} (+${incremento.toFixed(1)}%). Revisa la factura.`
             : `⚠️ ${data.proveedor} raised the price of "${data.producto}" from ${formatMoney(precioAnterior, lang)} to ${formatMoney(precioActual, lang)} (+${incremento.toFixed(1)}%). Check the invoice.`;
